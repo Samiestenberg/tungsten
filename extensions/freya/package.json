@@ -1,0 +1,142 @@
+{
+  "name": "freya",
+  "displayName": "Freya",
+  "description": "Tungstens kodagent. Local-first, BYOK, ingen telemetri.",
+  "version": "0.1.0",
+  "publisher": "tungsten",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.131.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "enabledApiProposals": [
+    "defaultChatParticipant"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Freya läser och skriver filer och kan köra kommandon i arbetsytan."
+    }
+  },
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "tungsten.freya",
+        "name": "freya",
+        "fullName": "Freya",
+        "description": "Vad ska Freya göra?",
+        "isDefault": true,
+        "modes": [
+          "agent",
+          "ask"
+        ],
+        "locations": [
+          "chat"
+        ]
+      }
+    ],
+    "commands": [
+      {
+        "command": "freya.setKeys",
+        "title": "Ange Cloudflare-nycklar",
+        "category": "Freya"
+      },
+      {
+        "command": "freya.clearKeys",
+        "title": "Radera sparade nycklar",
+        "category": "Freya"
+      },
+      {
+        "command": "freya.showBackend",
+        "title": "Visa vilken modell som används",
+        "category": "Freya"
+      }
+    ],
+    "configuration": {
+      "title": "Freya",
+      "properties": {
+        "freya.chat.backend": {
+          "type": "string",
+          "enum": [
+            "workersai",
+            "ollama"
+          ],
+          "enumDescriptions": [
+            "Cloudflare Workers AI. Kräver egna nycklar (BYOK).",
+            "Lokal Ollama. Fungerar offline."
+          ],
+          "default": "workersai",
+          "description": "Vilken modell Freyas chatt/agent använder."
+        },
+        "freya.chat.workersAiModel": {
+          "type": "string",
+          "default": "@cf/qwen/qwen3-30b-a3b-fp8",
+          "description": "Modell-ID på Workers AI."
+        },
+        "freya.chat.ollamaModel": {
+          "type": "string",
+          "default": "qwen2.5-coder:14b",
+          "description": "Ollama-modell för chatt/agent."
+        },
+        "freya.chat.maxSteps": {
+          "type": "number",
+          "default": 25,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Högsta antal verktygssteg per fråga."
+        },
+        "freya.ollama.url": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Adress till Ollama. Används av både chatt och autocomplete."
+        },
+        "freya.autocomplete.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Inline-komplettering från en lokal FIM-modell."
+        },
+        "freya.autocomplete.model": {
+          "type": "string",
+          "default": "qwen2.5-coder:1.5b-base",
+          "description": "FIM-modell i Ollama. Måste vara en base-modell, inte en instruct-modell."
+        },
+        "freya.autocomplete.debounceMs": {
+          "type": "number",
+          "default": 200,
+          "description": "Väntetid efter sista tangenttryck innan förslag hämtas."
+        },
+        "freya.autocomplete.maxTokens": {
+          "type": "number",
+          "default": 256,
+          "description": "Högsta längd på ett förslag (num_predict)."
+        },
+        "freya.autocomplete.prefixChars": {
+          "type": "number",
+          "default": 3000,
+          "description": "Antal tecken före markören som skickas som kontext."
+        },
+        "freya.autocomplete.suffixChars": {
+          "type": "number",
+          "default": 1000,
+          "description": "Antal tecken efter markören som skickas som kontext."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:freya",
+    "watch": "gulp watch-extension:freya"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/vscode.git"
+  }
+}

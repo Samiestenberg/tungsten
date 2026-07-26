@@ -1,0 +1,20 @@
+{
+	"extends": "../tsconfig.base.json",
+	"compilerOptions": {
+		"rootDir": "./src",
+		"outDir": "./out",
+		"skipLibCheck": true,
+		"types": [
+			"node"
+		]
+	},
+	"exclude": [
+		"node_modules",
+		"out"
+	],
+	"include": [
+		"src/**/*",
+		"../../src/vscode-dts/vscode.d.ts",
+		"../../src/vscode-dts/vscode.proposed.defaultChatParticipant.d.ts"
+	]
+}

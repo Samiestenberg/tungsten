@@ -70,6 +70,11 @@ export const unicodeFilter = Object.freeze<string[]>([
 	// extensions/copilot has its own code style
 	'!extensions/copilot/**',
 
+	// extensions/freya is Tungsten's own agent: its prompts, tool descriptions
+	// and error messages are deliberately written in Swedish, because they are
+	// part of what the model reads.
+	'!extensions/freya/**',
+
 	'!src/vs/base/browser/dompurify/**',
 	'!src/vs/workbench/services/keybinding/browser/keyboardLayouts/**',
 	'!src/vs/workbench/contrib/terminal/common/scripts/psreadline/**',
@@ -142,6 +147,9 @@ export const indentationFilter = Object.freeze<string[]>([
 	// extensions/copilot has its own code style
 	'!extensions/copilot/**',
 
+	// extensions/freya has its own code style (2 spaces, kept as authored)
+	'!extensions/freya/**',
+
 	// except specific file types
 	'!src/vs/*/**/*.d.ts',
 	'!src/typings/**/*.d.ts',
@@ -207,6 +215,8 @@ export const copyrightFilter = Object.freeze<string[]>([
 	'!resources/linux/snap/snapcraft.yaml',
 	'!resources/win32/bin/code.js',
 	'!resources/completions/**',
+	// extensions/freya is Tungsten's own code, not Microsoft's
+	'!extensions/freya/**',
 	'!extensions/configuration-editing/build/inline-allOf.ts',
 	'!extensions/markdown-language-features/media/highlight.css',
 	'!extensions/markdown-math/notebook-out/**',
@@ -251,6 +261,9 @@ export const tsFormattingFilter = Object.freeze<string[]>([
 
 	// extensions/copilot has its own code style
 	'!extensions/copilot/**',
+
+	// extensions/freya has its own code style
+	'!extensions/freya/**',
 ]);
 
 export const eslintFilter = Object.freeze<string[]>([
