@@ -1,9 +1,13 @@
 import * as vscode from "vscode";
 import { registerParticipant } from "./participant.js";
+import { registerLanguageModel } from "./languageModel.js";
 import { registerAutocomplete } from "./autocomplete.js";
 import { clearKeys, promptAndStoreKeys, chatBackend } from "./config.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
+  // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
+  // chat-request med "Language model unavailable" innan Freyas handler nås.
+  registerLanguageModel(ctx);
   registerParticipant(ctx);
   registerAutocomplete(ctx);
 

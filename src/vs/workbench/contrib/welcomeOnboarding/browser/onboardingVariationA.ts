@@ -10,7 +10,6 @@ import { isCancellationError } from '../../../../base/common/errors.js';
 import { StopWatch } from '../../../../base/common/stopwatch.js';
 import { URI } from '../../../../base/common/uri.js';
 import { isWindows, isMacintosh, isLinux } from '../../../../base/common/platform.js';
-import { assertDefined } from '../../../../base/common/types.js';
 import { FileAccess } from '../../../../base/common/network.js';
 import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
 import { KeyCode } from '../../../../base/common/keyCodes.js';
@@ -77,8 +76,12 @@ type OnboardingActionEvent = {
 
 type EnterpriseSignInUiState = 'options' | 'instance' | 'progress';
 
-assertDefined(product.defaultChatAgent, 'Onboarding requires a default chat agent product configuration.');
-const defaultChat = product.defaultChatAgent;
+// Tungsten ships without a default chat agent, so this must not assert at
+// module scope: the module is imported eagerly by the workbench contribution
+// and a throw here takes down the whole window. The wizard is a sign-in flow
+// for the default chat agent and is skipped entirely when there is none --
+// see the guard in `show()`.
+const defaultChat = product.defaultChatAgent as NonNullable<typeof product.defaultChatAgent>;
 
 /**
  * Variation A — Classic Wizard Modal
@@ -168,6 +171,11 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
 
 	show(): void {
 		if (this.overlay) {
+			return;
+		}
+
+		if (!product.defaultChatAgent) {
+			// Nothing to onboard to without a default chat agent.
 			return;
 		}
 

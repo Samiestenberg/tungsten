@@ -264,7 +264,10 @@ export interface IProductConfiguration {
 	readonly commonlyUsedSettings?: string[];
 	readonly aiGeneratedWorkspaceTrust?: IAiGeneratedWorkspaceTrust;
 
-	readonly defaultChatAgent: IDefaultChatAgent;
+	// Optional: Tungsten ships without a default chat agent (Freya is a plain
+	// chat participant, there is no Copilot to sign in to). Much of the
+	// codebase already guards this with `?.`; the type now says so too.
+	readonly defaultChatAgent?: IDefaultChatAgent;
 	readonly chatParticipantRegistry?: string;
 	readonly chatSessionRecommendations?: IChatSessionRecommendation[];
 	readonly emergencyAlertUrl?: string;

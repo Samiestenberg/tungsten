@@ -394,10 +394,24 @@ export class ExtHostLanguageModels implements ExtHostLanguageModelsShape {
 			await this.selectLanguageModels(extension, {});
 		}
 
+		// Upstream only ever accepts the Copilot vendor here, which means a fork
+		// without Copilot has no default model at all -- and every chat request
+		// then fails with "Language model unavailable" before it reaches the
+		// participant. Tungsten prefers the Copilot vendor when present (so
+		// upstream behaviour is unchanged) and otherwise falls back to any
+		// vendor that offers a default model for the chat location.
 		for (const [modelIdentifier, modelData] of this._localModels) {
 			if (modelData.metadata.isDefaultForLocation[ChatAgentLocation.Chat] && modelData.metadata.vendor === COPILOT_VENDOR_ID) {
 				defaultModelId = modelIdentifier;
 				break;
+			}
+		}
+		if (!defaultModelId) {
+			for (const [modelIdentifier, modelData] of this._localModels) {
+				if (modelData.metadata.isDefaultForLocation[ChatAgentLocation.Chat]) {
+					defaultModelId = modelIdentifier;
+					break;
+				}
 			}
 		}
 		if (!defaultModelId && !forceResolveModels) {

@@ -14,10 +14,12 @@
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "onStartupFinished"
+    "onStartupFinished",
+    "onLanguageModelChatProvider:freya"
   ],
   "enabledApiProposals": [
-    "defaultChatParticipant"
+    "defaultChatParticipant",
+    "chatProvider"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -37,9 +39,6 @@
         "modes": [
           "agent",
           "ask"
-        ],
-        "locations": [
-          "chat"
         ]
       }
     ],
@@ -129,7 +128,13 @@
           "description": "Antal tecken efter markören som skickas som kontext."
         }
       }
-    }
+    },
+    "languageModelChatProviders": [
+      {
+        "vendor": "freya",
+        "displayName": "Freya"
+      }
+    ]
   },
   "scripts": {
     "compile": "gulp compile-extension:freya",

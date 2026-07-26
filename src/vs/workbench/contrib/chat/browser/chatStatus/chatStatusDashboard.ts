@@ -48,7 +48,10 @@ import { GitHubPaths, IDefaultAccountService } from '../../../../../platform/def
 import product from '../../../../../platform/product/common/product.js';
 import { isCompletionsEnabled } from '../../../../../editor/common/services/completionsEnablement.js';
 
-const defaultChat = product.defaultChatAgent;
+// Absent in Tungsten. This dashboard is the default chat agent's status UI and
+// is only reachable from the chat status entry, which hides itself when there
+// is no default chat agent -- so the module only needs to stay loadable here.
+const defaultChat = product.defaultChatAgent as NonNullable<typeof product.defaultChatAgent>;
 const completionsConfigurationTargets = [
 	ConfigurationTarget.WORKSPACE_FOLDER,
 	ConfigurationTarget.WORKSPACE,

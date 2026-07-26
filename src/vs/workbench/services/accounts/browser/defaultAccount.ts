@@ -88,7 +88,27 @@ interface IMcpRegistryResponse {
 	readonly mcp_registries: ReadonlyArray<IMcpRegistryProvider>;
 }
 
-function toDefaultAccountConfig(defaultChatAgent: IDefaultChatAgent): IDefaultAccountConfig {
+// `defaultChatAgent` is absent in Tungsten (no Copilot to sign in to). This
+// runs in the DefaultAccountService constructor, so it must never throw --
+// it returns an inert config instead, and DefaultAccountProviderContribution
+// skips registering the account provider entirely.
+function toDefaultAccountConfig(defaultChatAgent: IDefaultChatAgent | undefined): IDefaultAccountConfig {
+	if (!defaultChatAgent) {
+		return {
+			preferredExtensions: [],
+			authenticationProvider: {
+				default: { id: '', name: '' },
+				enterprise: { id: '', name: '' },
+				enterpriseProviderConfig: '',
+				enterpriseProviderUriSetting: '',
+				scopes: [],
+			},
+			entitlementUrl: '',
+			tokenEntitlementUrl: '',
+			mcpRegistryDataUrl: '',
+			managedSettingsUrl: '',
+		};
+	}
 	return {
 		preferredExtensions: [
 			defaultChatAgent.chatExtensionId,
@@ -1175,6 +1195,11 @@ class DefaultAccountProviderContribution extends Disposable implements IWorkbenc
 		@IDefaultAccountService defaultAccountService: IDefaultAccountService,
 	) {
 		super();
+		if (!productService.defaultChatAgent) {
+			// No default chat agent: nothing to authenticate against, and the
+			// provider would otherwise poll github.com for entitlements.
+			return;
+		}
 		const defaultAccountProvider = this._register(instantiationService.createInstance(DefaultAccountProvider, toDefaultAccountConfig(productService.defaultChatAgent)));
 		defaultAccountService.setDefaultAccountProvider(defaultAccountProvider);
 	}
