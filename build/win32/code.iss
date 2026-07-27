@@ -10,9 +10,10 @@ AppName={#NameLong}
 AppVerName={#NameVersion}
 ; Tungsten är inte Microsoft. Att stå kvar som "Microsoft Corporation" i
 ; Program och funktioner vore fel oavsett vad SmartScreen råkar säga om en
-; osignerad binär. URL-raderna är borta med flit: det finns ingen hemsida än,
-; och en död länk i Program och funktioner är sämre än ingen länk alls.
+; osignerad binär.
 AppPublisher={#NameLong}
+AppPublisherURL=https://github.com/Samiestenberg/tungsten
+AppSupportURL=https://github.com/Samiestenberg/tungsten/issues
 DefaultGroupName={#NameLong}
 AllowNoIcons=yes
 OutputDir={#OutputDir}
@@ -1344,6 +1345,7 @@ begin
     'Tungsten is not code-signed, so Windows SmartScreen may say the publisher is unknown.' + #13#10 + #13#10 +
     'That is not a sign that anything is wrong with this installer. We chose not to buy a Windows code-signing certificate (several thousand kronor per year) and to put that money into the product instead.' + #13#10 + #13#10 +
     'To continue past the warning, click "More info" and then "Run anyway".' + #13#10 + #13#10 +
+    'You can verify the source yourself: https://github.com/Samiestenberg/tungsten' + #13#10 + #13#10 +
     'What Tungsten does with your code:' + #13#10 +
     '  -  Tungsten runs an AI model locally on your computer. The local model listens on 127.0.0.1 only, so in local mode your code does not leave the machine.' + #13#10 +
     '  -  The cloud model is used only if you turn it on yourself, with your own Cloudflare key.' + #13#10 +
