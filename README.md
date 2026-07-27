@@ -1,78 +1,109 @@
-# Visual Studio Code - Open Source ("Code - OSS")
-[![Feature Requests](https://img.shields.io/github/issues/microsoft/vscode/feature-request.svg)](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
-[![Bugs](https://img.shields.io/github/issues/microsoft/vscode/bug.svg)](https://github.com/microsoft/vscode/issues?utf8=✓&q=is%3Aissue+is%3Aopen+label%3Abug)
-[![Gitter](https://img.shields.io/badge/chat-on%20gitter-yellow.svg)](https://gitter.im/Microsoft/vscode)
+# Tungsten
 
-## The Repository
+Tungsten is a fork of [Visual Studio Code](https://github.com/microsoft/vscode) with a
+coding agent, **Freya**, built into the editor instead of bolted on as an extension.
 
-This repository ("`Code - OSS`") is where we (Microsoft) develop the [Visual Studio Code](https://code.visualstudio.com) product together with the community. Not only do we work on code and issues here, but we also publish our [roadmap](https://github.com/microsoft/vscode/wiki/Roadmap), [monthly iteration plans](https://github.com/microsoft/vscode/wiki/Iteration-Plans), and our [endgame plans](https://github.com/microsoft/vscode/wiki/Running-the-Endgame). This source code is available to everyone under the standard [MIT license](https://github.com/microsoft/vscode/blob/main/LICENSE.txt).
+The point of the fork is where the model runs. Tungsten ships a local model in the
+box: a `llama.cpp` server and a 1.5B GGUF that start with the app, bound to
+`127.0.0.1`. Everyday work — inline completions, commit messages, code explanations —
+runs on that model. Nothing is sent anywhere.
 
-## Visual Studio Code
+## The two lanes
 
-<p align="center">
-  <img alt="VS Code in action" src="https://github.com/user-attachments/assets/56af271c-949d-454c-a3ea-16188c063414">
-</p>
+Tungsten splits AI work in two, because the two halves have different costs and
+different privacy stories.
 
-[Visual Studio Code](https://code.visualstudio.com) is a distribution of the `Code - OSS` repository with Microsoft-specific customizations released under a traditional [Microsoft product license](https://code.visualstudio.com/License/).
+| | Light lane | Heavy lane |
+|---|---|---|
+| What | Inline completions, commit messages, explanations, secret scanning | The agent: multi-file edits, tool use, reasoning |
+| Model | Embedded Qwen2.5-Coder-1.5B (bundled) | Cloudflare Workers AI, or your own Ollama |
+| Where | `127.0.0.1` only | Cloud, or localhost with Ollama |
+| Cost | Free, always available | Your own key, your own bill |
+| Needs setup | No | Yes — you supply the key |
 
-[Visual Studio Code](https://code.visualstudio.com) combines the simplicity of a code editor with what developers need for their core edit-build-debug cycle. It provides comprehensive code editing, navigation, and understanding support along with lightweight debugging, a rich extensibility model, and lightweight integration with existing tools.
+The light lane is the default and needs no installation, no account and no network.
+The heavy lane only exists if you turn it on.
 
-Visual Studio Code is updated monthly with new features and bug fixes. You can download it for Windows, macOS, and Linux on [Visual Studio Code's website](https://code.visualstudio.com/Download). To get the latest releases every day, install the [Insiders build](https://code.visualstudio.com/insiders).
+## What we can honestly say about privacy
 
-## Contributing
+These are measured claims, not marketing. Each one was verified against the packaged
+build before it was written down:
 
-There are many ways in which you can participate in this project, for example:
+- **In local mode your code does not leave the machine.** The embedded model listens
+  on `127.0.0.1` and nowhere else, behind a derived API key.
+- **The cloud is used only if you choose it, with your own key.** Without Cloudflare
+  credentials no cloud provider is ever constructed.
+- **No telemetry, no crash reports sent, no update checks, no marketplace pings.**
+  `product.json` carries none of `enableTelemetry`, `aiConfig`, `updateUrl`,
+  `appCenter` or `extensionsGallery`, and the crash reporter runs with
+  `uploadToServer: false`.
 
-* [Submit bugs and feature requests](https://github.com/microsoft/vscode/issues), and help us verify as they are checked in
-* Review [source code changes](https://github.com/microsoft/vscode/pulls)
-* Review the [documentation](https://github.com/microsoft/vscode-docs) and make pull requests for anything from typos to new content.
+What we do **not** claim:
 
-If you are interested in fixing issues and contributing directly to the code base,
-please see the document [How to Contribute](https://github.com/microsoft/vscode/wiki/How-to-Contribute), which covers the following:
+- We make no retention promises about the cloud lane. What Cloudflare does with a
+  prompt is between you and Cloudflare.
+- The app is not silent on the network in an absolute sense: Chromium's own resolver
+  may use DNS-over-HTTPS, which is the browser engine, not Tungsten.
+- `freya.ollama.url` is yours to configure. Point it at a remote host and code will
+  go there — by your choice.
 
-* [How to build and run from source](https://github.com/microsoft/vscode/wiki/How-to-Contribute)
-* [The development workflow, including debugging and running tests](https://github.com/microsoft/vscode/wiki/How-to-Contribute#debugging)
-* [Coding guidelines](https://github.com/microsoft/vscode/wiki/Coding-Guidelines)
-* [Submitting pull requests](https://github.com/microsoft/vscode/wiki/How-to-Contribute#pull-requests)
-* [Finding an issue to work on](https://github.com/microsoft/vscode/wiki/How-to-Contribute#where-to-contribute)
-* [Contributing to translations](https://aka.ms/vscodeloc)
+## Workspace trust
 
-## Feedback
+Opening an untrusted folder does not turn Freya off silently. The light lane keeps
+working, because it only reads and only talks to a process we started ourselves. The
+agent — which writes files and can run commands — stays off until you trust the
+folder, and says so with a button instead of just disappearing.
 
-* Ask a question on [Stack Overflow](https://stackoverflow.com/questions/tagged/vscode)
-* [Request a new feature](CONTRIBUTING.md)
-* Upvote [popular feature requests](https://github.com/microsoft/vscode/issues?q=is%3Aopen+is%3Aissue+label%3Afeature-request+sort%3Areactions-%2B1-desc)
-* [File an issue](https://github.com/microsoft/vscode/issues)
-* Connect with the extension author community on [GitHub Discussions](https://github.com/microsoft/vscode-discussions/discussions) or [Slack](https://aka.ms/vscode-dev-community)
-* Follow [@code](https://x.com/code) and let us know what you think!
+While a folder is untrusted, workspace settings cannot redirect which binary is
+launched or where code is sent (`freya.local.runtimePath`, `freya.local.port` and
+`freya.ollama.url` are ignored from workspace scope).
 
-See our [wiki](https://github.com/microsoft/vscode/wiki/Feedback-Channels) for a description of each of these channels and information on some other available community-driven channels.
+## Building
 
-## Related Projects
+Tungsten builds like VS Code. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+prerequisites.
 
-Many of the core components and extensions to VS Code live in their own repositories on GitHub. For example, the [node debug adapter](https://github.com/microsoft/vscode-node-debug) and the [mono debug adapter](https://github.com/microsoft/vscode-mono-debug) repositories are separate from each other. For a complete list, please visit the [Related Projects](https://github.com/microsoft/vscode/wiki/Related-Projects) page on our [wiki](https://github.com/microsoft/vscode/wiki).
+```sh
+npm install
+npm run compile
+```
 
-## Bundled Extensions
+The embedded runtime is not in git — about a gigabyte of weights and binaries does not
+belong in history. Fetch it separately:
 
-VS Code includes a set of built-in extensions located in the [extensions](extensions) folder, including grammars and snippets for many languages. Extensions that provide rich language support (inline suggestions, Go to Definition) for a language have the suffix `language-features`. For example, the `json` extension provides coloring for `JSON` and the `json-language-features` extension provides rich language support for `JSON`.
+```sh
+node --experimental-strip-types build/freya/fetchLocalRuntime.ts
+```
 
-## Development Container
+It pulls a pinned `llama.cpp` release from GitHub with a checked SHA-256, and prefers
+a GGUF you already have via Ollama over downloading another copy.
 
-This repository includes a Visual Studio Code Dev Containers / GitHub Codespaces development container.
+To build the Windows installer from a packaged build:
 
-* For [Dev Containers](https://aka.ms/vscode-remote/download/containers), use the **Dev Containers: Clone Repository in Container Volume...** command which creates a Docker volume for better disk I/O on macOS and Windows.
-  * If you already have VS Code and Docker installed, you can also click [here](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/microsoft/vscode) to get started. This will cause VS Code to automatically install the Dev Containers extension if needed, clone the source code into a container volume, and spin up a dev container for use.
+```sh
+npx gulp vscode-win32-x64-user-setup
+```
 
-* For Codespaces, install the [GitHub Codespaces](https://marketplace.visualstudio.com/items?itemName=GitHub.codespaces) extension in VS Code, and use the **Codespaces: Create New Codespace** command.
+## "Unknown publisher"
 
-Docker / the Codespace should have at least **4 cores and 6 GB of RAM (8 GB recommended)** to run a full build. See the [development container README](.devcontainer/README.md) for more information.
+Tungsten is not code-signed, so Windows SmartScreen will say the publisher is unknown.
+That is not a sign that anything is wrong. We chose not to buy a Windows code-signing
+certificate — several thousand kronor a year — and put that into the product instead.
+The installer says the same thing to your face before it installs anything, and points
+here so you can check the source yourself.
 
-## Code of Conduct
+## Licence
 
-This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+Tungsten is MIT licensed, and so is the Visual Studio Code source it is built from.
+The upstream copyright is Microsoft's and stays intact in [LICENSE.txt](LICENSE.txt);
+Tungsten's own changes are added under the same terms. Third-party components are
+listed in [ThirdPartyNotices.txt](ThirdPartyNotices.txt).
 
-## License
+The bundled model and runtime carry their own licences, both redistributable:
 
-Copyright (c) Microsoft Corporation. All rights reserved.
+| Component | Licence |
+|---|---|
+| llama.cpp | MIT |
+| Qwen2.5-Coder-1.5B (base) | Apache-2.0 |
 
-Licensed under the [MIT](LICENSE.txt) license.
+Tungsten is not affiliated with, endorsed by, or supported by Microsoft.

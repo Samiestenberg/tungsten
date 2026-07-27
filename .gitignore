@@ -55,3 +55,19 @@ dist
 # Hamtas med: node --experimental-strip-types build/freya/fetchLocalRuntime.ts
 # Vikter och binarer hor inte i git-historiken.
 /resources/freya-runtime/
+
+# Hemligheter. Freya laser CLOUDFLARE_ACCOUNT_ID/CLOUDFLARE_API_TOKEN ur en .env
+# i arbetsytans rot (extensions/freya/src/config.ts), sa en .env i det har repot
+# ar inte hypotetisk -- den ar det dokumenterade stallet att lagga sin nyckel.
+# Utan de har raderna racker ett "git add -A" for att publicera den.
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.pem
+*.pfx
+*.p12
+credentials.json
+.netrc
+.npmrc
