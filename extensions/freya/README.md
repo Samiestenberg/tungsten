@@ -65,3 +65,9 @@ en egenskap av konstruktionen, inte ett filter.
 
 Freya är avstängd i obetrodda mappar (`untrustedWorkspaces.supported: false`) —
 den läser och skriver filer och kan köra kommandon, så det är rätt default.
+
+I restricted mode aktiverar VS Code inte extensionen alls, så Freya kan inte
+säga något själv. Chattpanelen visar därför raden **"Freya är pausad i en
+obetrodd mapp"** med en **Lita på mappen**-knapp. Den kommer från workbenchen
+(`src/vs/workbench/contrib/chat/browser/viewsWelcome/tungstenRestrictedModeWelcome.ts`),
+inte från den här extensionen.
