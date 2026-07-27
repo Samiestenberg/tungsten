@@ -85,8 +85,8 @@ const extensions = [
 		mocha: { timeout: 60_000 }
 	},
 	{
-		label: 'copilot',
-		files: 'extensions/copilot/dist/test-extension.js',
+		// Tester körs med tdd-ui (suite/test), som resten av Freya-koden.
+		label: 'freya',
 		mocha: { ui: 'tdd', timeout: 60_000 }
 	}
 ];

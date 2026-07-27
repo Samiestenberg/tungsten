@@ -12,6 +12,18 @@ const SYSTEM = [
   "4. Bevara allt innehåll du inte uttryckligen blivit ombedd att ändra.",
   "5. Påstå aldrig att du gjort något du inte gjort.",
   "",
+  // qwen2.5-coder skriver gärna anropet som ```json i svarstexten trots att
+  // Ollamas egen tools-mall säger emot. Ollama tolkar DÄREMOT <tool_call>-
+  // taggen och gör då ett riktigt tool_calls-svar, så vi pekar dit explicit.
+  // Parsern i den här filen räddar de fall där modellen ändå inte lyssnar.
+  "VERKTYG:",
+  "Anropa verktyg via tool-API:t, inte som text i svaret.",
+  "Måste du ändå skriva anropet i texten: använd EXAKT",
+  '<tool_call>{"name": "verktygsnamn", "arguments": {...}}</tool_call>',
+  "och skriv inget annat i samma svar.",
+  "Skriv ALDRIG verktygsanrop i ```json-block och blanda aldrig ett anrop",
+  "med förklarande text — förklara efteråt, när du fått resultatet.",
+  "",
   "Var kortfattad.",
 ].join("\n");
 
@@ -49,15 +61,30 @@ export class OllamaProvider implements ModelProvider {
     let text = "";
     let nativeToolCalls: any[] = [];
 
-    // qwen2.5-coder skriver ofta ett verktygsanrop som rått JSON-innehåll
-    // (se parseFallbackToolCalls nedan) i stället för att fylla tool_calls.
-    // Vi vet inte om en chunk är sånt JSON eller riktig text förrän vi sett
-    // starten av den — så vänta med att strömma tills vi vet, annars läcker
-    // trasigt JSON ut i chatten innan vi hinner tolka om det till ett verktyg.
-    let decided = false;
-    let streamAsText = false;
+    // Bara verktyg som FAKTISKT är registrerade får återskapas ur text. Utan
+    // den kontrollen blir vanlig JSON i ett kodsvar tolkat som ett anrop.
+    // Tom verktygslista (t.ex. languageModel.ts) stänger av återskapningen
+    // helt, vilket är rätt: där finns ingen loop som kan köra ett verktyg.
+    const knownTools = new Set<string>(
+      tools.map((t) => t?.name).filter((n): n is string => typeof n === "string")
+    );
 
-    // <think>-taggar strippas FÖRE beslutet ovan — annars ser vi ett "<" och
+    // Allt fram till första tecknet som KAN inleda ett verktygsanrop strömmas
+    // direkt. Resten hålls tillbaka tills vi vet om det blev ett anrop eller
+    // bara prosa — annars läcker ```json-blocket ut i chatten innan vi hunnit
+    // tolka om det till ett verktyg (det var precis felet).
+    const CALL_START = /```|<tool_call>|\{/;
+    let emitted = 0;
+    const streamSafePrefix = () => {
+      const m = CALL_START.exec(text.slice(emitted));
+      const safeEnd = m ? emitted + m.index : text.length;
+      if (safeEnd > emitted) {
+        onDelta?.(text.slice(emitted, safeEnd));
+        emitted = safeEnd;
+      }
+    };
+
+    // <think>-taggar strippas FÖRE gaten ovan — annars ser vi ett "<" och
     // gissar fel om chunken är prosa eller ett verktygsanrop.
     const think = createThinkStripper();
 
@@ -70,24 +97,28 @@ export class OllamaProvider implements ModelProvider {
         const visible = think.push(msg.content);
         if (!visible) return;
         text += visible;
-        if (!decided && text.trim().length > 0) {
-          decided = true;
-          streamAsText = !looksLikeToolCallStart(text);
-        }
-        if (decided && streamAsText) onDelta?.(visible);
+        streamSafePrefix();
       }
     });
 
     const tail = think.flush();
     if (tail) {
       text += tail;
-      if (decided && streamAsText) onDelta?.(tail);
+      streamSafePrefix();
     }
 
     const content: any[] = [];
 
     const fallbackCalls =
-      nativeToolCalls.length === 0 && text ? parseFallbackToolCalls(text) : null;
+      nativeToolCalls.length === 0 && text
+        ? parseFallbackToolCalls(text, knownTools)
+        : null;
+
+    // Inget anrop hittat: det tillbakahållna var vanlig text trots allt.
+    if (!fallbackCalls && emitted < text.length) {
+      onDelta?.(text.slice(emitted));
+      emitted = text.length;
+    }
 
     if (fallbackCalls) {
       for (const fc of fallbackCalls) {
@@ -129,10 +160,6 @@ export class OllamaProvider implements ModelProvider {
   }
 }
 
-function looksLikeToolCallStart(s: string): boolean {
-  return /^\s*(```|<tool_call>|\{|\[)/.test(s);
-}
-
 // Läser NDJSON-strömmen från Ollamas /api/chat (en JSON-rad per chunk) och
 // anropar onLine för varje avkodad rad.
 async function readNDJSON(res: Response, onLine: (obj: any) => void) {
@@ -159,80 +186,146 @@ async function readNDJSON(res: Response, onLine: (obj: any) => void) {
   }
 }
 
-// Tolkar ett verktygsanrop som modellen skrev som text i stället för att
-// fylla i tool_calls: bart JSON-objekt/array, ett eller flera ```json-block,
-// <tool_call>-taggar, eller flera JSON-objekt konkatenerade efter varandra.
-function parseFallbackToolCalls(
-  raw: string
-): { name: string; arguments: any }[] | null {
-  const text = raw
-    .replace(/```json/gi, "")
-    .replace(/```/g, "")
-    .replace(/<\/?tool_call>/g, "")
-    .trim();
-  if (!text) return null;
+// Nycklar modellen använder för argumenten. "parameters" är samma alias-fälla
+// som i verktygsschemat: modellen härmar schemat i stället för anropsformatet.
+const ARG_KEYS = ["arguments", "parameters", "args"];
 
-  const values = extractJsonValues(text);
-  if (!values) return null;
-
-  const asCall = (v: any): { name: string; arguments: any } | null =>
-    v && typeof v === "object" && !Array.isArray(v) && typeof v.name === "string"
-      ? { name: v.name, arguments: v.arguments ?? {} }
-      : null;
-
-  const flat = values.flatMap((v) => (Array.isArray(v) ? v : [v]));
-  const calls = flat.map(asCall);
-  return calls.every((c): c is NonNullable<typeof c> => c !== null)
-    ? calls
-    : null;
-}
-
-// Läser ut alla balanserade JSON-värden (objekt/arrayer) som står efter
-// varandra i en text, separerade av valfritt whitespace. Ger null om något
-// mellan värdena inte är whitespace — då är det troligen vanlig text/prosa.
-function extractJsonValues(text: string): any[] | null {
-  const results: any[] = [];
-  let i = 0;
-  const n = text.length;
-  while (i < n) {
-    while (i < n && /\s/.test(text[i])) i++;
-    if (i >= n) break;
-    if (text[i] !== "{" && text[i] !== "[") return null;
-
-    const start = i;
-    let depth = 0;
-    let inString = false;
-    let escape = false;
-    for (; i < n; i++) {
-      const ch = text[i];
-      if (inString) {
-        if (escape) escape = false;
-        else if (ch === "\\") escape = true;
-        else if (ch === '"') inString = false;
-        continue;
-      }
-      if (ch === '"') {
-        inString = true;
-        continue;
-      }
-      if (ch === "{" || ch === "[") depth++;
-      else if (ch === "}" || ch === "]") {
-        depth--;
-        if (depth === 0) {
-          i++;
-          break;
-        }
-      }
-    }
-    if (depth !== 0) return null;
-
+/** Argumenten normaliserade till ett objekt, eller undefined om de är skräp. */
+function coerceArgs(value: any): Record<string, any> | undefined {
+  if (value === undefined || value === null) return {};
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return {};
     try {
-      results.push(JSON.parse(text.slice(start, i)));
+      const parsed = JSON.parse(trimmed);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : undefined;
     } catch {
-      return null;
+      return undefined;
     }
   }
-  return results.length > 0 ? results : null;
+  return typeof value === "object" && !Array.isArray(value) ? value : undefined;
+}
+
+/**
+ * Är det här objektet ett verktygsanrop för ett REGISTRERAT verktyg?
+ * Accepterar både {"name","arguments"} och OpenAI-formen
+ * {"function":{"name","arguments"}}.
+ */
+function asToolCall(
+  value: any,
+  knownTools: ReadonlySet<string>
+): { name: string; arguments: any } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+
+  const src =
+    value.function && typeof value.function === "object" && !Array.isArray(value.function)
+      ? value.function
+      : value;
+
+  if (typeof src.name !== "string" || !knownTools.has(src.name)) return null;
+
+  const key = ARG_KEYS.find((k) => src[k] !== undefined);
+  if (key === undefined) return { name: src.name, arguments: {} };
+
+  const args = coerceArgs(src[key]);
+  // Namnet stämmer men argumenten går inte att tolka: hellre ingen träff än
+  // att köra ett verktyg med gissade argument.
+  return args === undefined ? null : { name: src.name, arguments: args };
+}
+
+/**
+ * Slutindex (exklusivt) för det balanserade {...} som börjar på `start`, eller
+ * -1 om det inte går ihop. Sträng- och escape-medveten så att en klammer inne
+ * i en JSON-sträng inte räknas.
+ */
+function matchBalancedObject(text: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escape) escape = false;
+      else if (ch === "\\") escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{" || ch === "[") depth++;
+    else if (ch === "}" || ch === "]") {
+      depth--;
+      if (depth === 0) return i + 1;
+      if (depth < 0) return -1;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Letar verktygsanrop var som helst i texten: bart JSON, i ```json-block, i
+ * <tool_call>-taggar, inbäddat i prosa (före ELLER efter), och flera i rad.
+ *
+ * Varför "var som helst" och inte bara hela svaret: qwen2.5-coder skriver
+ * regelbundet anropet i ett ```json-block och lägger en förklaring runt det.
+ * Den gamla parsern krävde att ingenting utom whitespace stod mellan
+ * JSON-värdena, så precis de svaren föll igenom och läckte ut som text medan
+ * verktyget aldrig kördes.
+ */
+function findEmbeddedToolCalls(
+  text: string,
+  knownTools: ReadonlySet<string>
+): { name: string; arguments: any }[] {
+  const found: { name: string; arguments: any }[] = [];
+
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+
+    const end = matchBalancedObject(text, i);
+    if (end < 0) continue;
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text.slice(i, end));
+    } catch {
+      continue; // inte JSON — leta vidare från nästa tecken
+    }
+
+    const call = asToolCall(parsed, knownTools);
+    if (call) {
+      found.push(call);
+    } else {
+      // Ett steg ner: {"tool_call": {...}} och liknande omslag. Djupare än så
+      // letar vi inte — då börjar vi hitta anrop i data som bara ser ut som ett.
+      for (const nested of Object.values(parsed ?? {})) {
+        const nestedCall = asToolCall(nested, knownTools);
+        if (nestedCall) found.push(nestedCall);
+      }
+    }
+
+    i = end - 1; // fortsätt efter objektet
+  }
+
+  return found;
+}
+
+/**
+ * Verktygsanrop som modellen skrev som text i stället för att fylla tool_calls.
+ * null när inget giltigt anrop finns — då är texten vanlig text.
+ *
+ * Exporterad för test: ren funktion, inga beroenden på vscode eller nätverk.
+ */
+export function parseFallbackToolCalls(
+  raw: string,
+  knownTools: ReadonlySet<string>
+): { name: string; arguments: any }[] | null {
+  if (!raw || knownTools.size === 0) return null;
+  const calls = findEmbeddedToolCalls(raw, knownTools);
+  return calls.length > 0 ? calls : null;
 }
 
 // Internt format (Anthropic-stil) -> OpenAI-format
