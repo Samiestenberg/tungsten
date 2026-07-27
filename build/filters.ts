@@ -67,8 +67,6 @@ export const unicodeFilter = Object.freeze<string[]>([
 	'!extensions/**/colorize-fixtures/**',
 	'!extensions/terminal-suggest/src/shell/fishBuiltinsCache.ts',
 
-	// extensions/copilot has its own code style
-	'!extensions/copilot/**',
 
 	// extensions/freya is Tungsten's own agent: its prompts, tool descriptions
 	// and error messages are deliberately written in Swedish, because they are
@@ -144,8 +142,6 @@ export const indentationFilter = Object.freeze<string[]>([
 	'!extensions/**/themes/**',
 	'!extensions/**/colorize-fixtures/**',
 
-	// extensions/copilot has its own code style
-	'!extensions/copilot/**',
 
 	// extensions/freya has its own code style (2 spaces, kept as authored)
 	'!extensions/freya/**',
@@ -236,8 +232,6 @@ export const copyrightFilter = Object.freeze<string[]>([
 	'!src/vs/base/common/lit-html/**',
 	'!src/vs/base/common/signals-core/**',
 
-	// extensions/copilot has its own code style
-	'!extensions/copilot/**',
 ]);
 
 export const tsFormattingFilter = Object.freeze<string[]>([
@@ -259,8 +253,6 @@ export const tsFormattingFilter = Object.freeze<string[]>([
 	'!extensions/terminal-suggest/src/shell/fishBuiltinsCache.ts',
 	'!src/vs/platform/agentHost/node/codex/protocol/generated/**',
 
-	// extensions/copilot has its own code style
-	'!extensions/copilot/**',
 
 	// extensions/freya has its own code style
 	'!extensions/freya/**',

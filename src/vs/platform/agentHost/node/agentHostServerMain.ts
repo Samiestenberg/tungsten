@@ -35,7 +35,6 @@ import { InstantiationService } from '../../instantiation/common/instantiationSe
 import { ServiceCollection } from '../../instantiation/common/serviceCollection.js';
 import { registerAgentHostNetworkServices } from './agentHostBootstrap.js';
 import { BANG_COMMAND_PREFIX } from './agentHostBangCommand.js';
-import { CopilotAgent } from './copilot/copilotAgent.js';
 import { INetworkDiagnosticsService, NetworkDiagnosticsService } from './networkDiagnosticsService.js';
 import { IByokLmBridgeRegistry, NullByokLmBridgeRegistry } from './byokLmBridgeRegistry.js';
 import { IByokLmProxyService, NullByokLmProxyService } from './copilot/byokLmProxyService.js';
@@ -309,9 +308,9 @@ async function main(): Promise<void> {
 		// to satisfy CopilotAgent / CopilotSessionLauncher DI.
 		diServices.set(IByokLmBridgeRegistry, new NullByokLmBridgeRegistry());
 		diServices.set(IByokLmProxyService, new NullByokLmProxyService());
-		const copilotAgent = disposables.add(instantiationService.createInstance(CopilotAgent));
-		agentService.registerProvider(copilotAgent);
-		log('CopilotAgent registered');
+		// Tungsten does not ship GitHub Copilot: the `copilotcli` provider is not
+		// registered here either. See the matching note in agentHostMain.
+		log('CopilotAgent not registered (Copilot is not part of Tungsten)');
 		// Claude and Codex providers are gated on two things:
 		//  1. The user-facing enable toggle (`chat.agentHost.<x>Agent.enabled`,
 		//     forwarded as an env var by the renderer-side starters; the remote
