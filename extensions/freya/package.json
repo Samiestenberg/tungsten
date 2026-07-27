@@ -1,7 +1,7 @@
 {
   "name": "freya",
   "displayName": "Freya",
-  "description": "Tungstens kodagent. Local-first, BYOK, ingen telemetri.",
+  "description": "Tungsten's built-in coding agent. Local-first, BYOK, no telemetry.",
   "version": "0.1.0",
   "publisher": "tungsten",
   "license": "MIT",
@@ -25,7 +25,7 @@
     "virtualWorkspaces": false,
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "Freya läser och skriver filer och kan köra kommandon i arbetsytan."
+      "description": "Freya reads and writes files and can run commands in the workspace."
     }
   },
   "contributes": {
@@ -34,7 +34,7 @@
         "id": "tungsten.freya",
         "name": "freya",
         "fullName": "Freya",
-        "description": "Vad ska Freya göra?",
+        "description": "What should Freya do?",
         "isDefault": true,
         "modes": [
           "agent",
@@ -45,38 +45,38 @@
     "commands": [
       {
         "command": "freya.setKeys",
-        "title": "Ange Cloudflare-nycklar",
+        "title": "Set Cloudflare keys",
         "category": "Freya"
       },
       {
         "command": "freya.clearKeys",
-        "title": "Radera sparade nycklar",
+        "title": "Delete stored keys",
         "category": "Freya"
       },
       {
         "command": "freya.showBackend",
-        "title": "Visa vilken modell som används",
+        "title": "Show which model is in use",
         "category": "Freya"
       },
       {
         "command": "freya.checkOllama",
-        "title": "Kolla att Ollama och modellerna finns",
+        "title": "Check that Ollama and the models are present",
         "category": "Freya"
       },
       {
         "command": "freya.generateCommitMessage",
-        "title": "Skriv commit-meddelande",
+        "title": "Write commit message",
         "category": "Freya",
         "icon": "$(sparkle)"
       },
       {
         "command": "freya.scanStagedForSecrets",
-        "title": "Skanna stagade ändringar för hemligheter",
+        "title": "Scan staged changes for secrets",
         "category": "Freya"
       },
       {
         "command": "freya.explainSelection",
-        "title": "Förklara markerad kod",
+        "title": "Explain selected code",
         "category": "Freya"
       }
     ],
@@ -92,29 +92,29 @@
     "walkthroughs": [
       {
         "id": "freya.setup",
-        "title": "Kom igång med Freya",
-        "description": "Freya har en egen lokal modell inbyggd. Inget att installera.",
+        "title": "Get started with Freya",
+        "description": "Freya has its own local model built in. Nothing to install.",
         "steps": [
           {
             "id": "freya.setup.ollama",
-            "title": "Allt lätt kör redan lokalt",
-            "description": "Freya pratar med en Ollama på http://localhost:11434. Hämta den från https://ollama.com/download och kör `ollama serve`.\n[Kolla om Ollama svarar](command:freya.checkOllama)",
+            "title": "Everything light already runs locally",
+            "description": "Autocomplete, commit messages and code explanations run on a 1.5B model that ships with the app. No installation, no sign-in, no network traffic.\n[Explain selected code](command:freya.explainSelection)",
             "media": {
               "markdown": "media/walkthrough-ollama.md"
             }
           },
           {
             "id": "freya.setup.models",
-            "title": "Tyngre arbete: moln eller egen stor modell",
-            "description": "Chatt/agent använder qwen2.5-coder:14b, autocomplete en liten FIM-modell.\n```\nollama pull qwen2.5-coder:14b\nollama pull qwen2.5-coder:1.5b-base\n```\n[Kolla att modellerna finns](command:freya.checkOllama)",
+            "title": "Heavier work: cloud or your own large model",
+            "description": "Agent work across several files wants a larger model. Either Cloudflare Workers AI with your own keys, or your own Ollama if you have the hardware.\n[Set Cloudflare keys](command:freya.setKeys)",
             "media": {
               "markdown": "media/walkthrough-models.md"
             }
           },
           {
             "id": "freya.setup.chat",
-            "title": "Öppna chatten",
-            "description": "Freya är default-deltagaren i chattpanelen.\n[Öppna chatten](command:workbench.action.chat.open)",
+            "title": "Open the chat",
+            "description": "Freya is the default participant in the chat panel.\n[Open the chat](command:workbench.action.chat.open)",
             "media": {
               "markdown": "media/walkthrough-chat.md"
             }
@@ -133,12 +133,12 @@
             "ollama"
           ],
           "enumDescriptions": [
-            "Välj själv: moln om Cloudflare-nycklar finns, annars din lokala Ollama.",
-            "Cloudflare Workers AI. Kräver egna nycklar (BYOK).",
-            "Lokal Ollama. Valfritt tillval, kräver att du hämtat en stor modell."
+            "Decide automatically: cloud if Cloudflare keys exist, otherwise your local Ollama.",
+            "Cloudflare Workers AI. Requires your own keys (BYOK).",
+            "Local Ollama. Optional extra; requires that you pulled a large model."
           ],
           "default": "auto",
-          "description": "TUNG lane: vilken modell Freyas chatt/agent använder. Den lätta lanen styrs av freya.light.backend."
+          "description": "HEAVY lane: which model Freya's chat/agent uses. The light lane is controlled by freya.light.backend."
         },
         "freya.light.backend": {
           "type": "string",
@@ -147,93 +147,93 @@
             "ollama"
           ],
           "enumDescriptions": [
-            "Den inbäddade 1.5B-modellen som följer med appen. Kräver ingen installation.",
-            "Din egen Ollama. Använd om du hellre kör en annan liten modell."
+            "The embedded 1.5B model that ships with the app. Requires no installation.",
+            "Your own Ollama. Use this if you would rather run a different small model."
           ],
           "default": "embedded",
-          "description": "LÄTT lane: autocomplete, commit-rubriker och kodförklaringar."
+          "description": "LIGHT lane: autocomplete, commit messages and code explanations."
         },
         "freya.chat.workersAiModel": {
           "type": "string",
           "default": "@cf/qwen/qwen3-30b-a3b-fp8",
-          "description": "Modell-ID på Workers AI."
+          "description": "Model ID on Workers AI."
         },
         "freya.chat.ollamaModel": {
           "type": "string",
           "default": "qwen2.5-coder:14b",
-          "description": "Ollama-modell för chatt/agent."
+          "description": "Ollama model for chat/agent."
         },
         "freya.local.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Använd den inbäddade lokala modellen (llama.cpp + Qwen2.5-Coder-1.5B) för de lätta uppgifterna. Av = fall tillbaka på Ollama."
+          "description": "Use the embedded local model (llama.cpp + Qwen2.5-Coder-1.5B) for the light tasks. Off = fall back to Ollama."
         },
         "freya.local.port": {
           "type": "number",
           "default": 11435,
-          "description": "Port för den inbäddade llama.cpp-servern. 11434 är Ollamas och används aldrig."
+          "description": "Port for the embedded llama.cpp server. 11434 belongs to Ollama and is never used."
         },
         "freya.local.contextSize": {
           "type": "number",
           "default": 4096,
-          "description": "Kontextfönster för den inbäddade modellen."
+          "description": "Context window for the embedded model."
         },
         "freya.local.runtimePath": {
           "type": "string",
           "default": "",
-          "description": "Egen sökväg till freya-runtime-mappen. Tomt = leta i appens resurser."
+          "description": "Custom path to the freya-runtime folder. Empty = look in the app's resources."
         },
         "freya.secrets.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Varna för hemligheter vid inklistring och före commit. Körs helt lokalt (mönstermatchning, ingen modell)."
+          "description": "Warn about secrets on paste and before commit. Runs entirely locally (pattern matching, no model)."
         },
         "freya.commit.model": {
           "type": "string",
           "default": "",
-          "description": "Ollama-modell som skriver commit-meddelanden. Tomt = samma som freya.chat.ollamaModel. Måste vara en instruct-modell, inte en base-modell."
+          "description": "Ollama model that writes commit messages. Empty = same as freya.chat.ollamaModel. Must be an instruct model, not a base model."
         },
         "freya.chat.maxSteps": {
           "type": "number",
           "default": 25,
           "minimum": 1,
           "maximum": 100,
-          "description": "Högsta antal verktygssteg per fråga."
+          "description": "Maximum number of tool steps per question."
         },
         "freya.ollama.url": {
           "type": "string",
           "default": "http://localhost:11434",
-          "description": "Adress till Ollama. Används av både chatt och autocomplete."
+          "description": "Address of Ollama. Used by both chat and autocomplete."
         },
         "freya.autocomplete.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Inline-komplettering från en lokal FIM-modell."
+          "description": "Inline completion from a local FIM model."
         },
         "freya.autocomplete.model": {
           "type": "string",
           "default": "qwen2.5-coder:1.5b-base",
-          "description": "FIM-modell i Ollama. Måste vara en base-modell, inte en instruct-modell."
+          "description": "FIM model in Ollama. Must be a base model, not an instruct model."
         },
         "freya.autocomplete.debounceMs": {
           "type": "number",
           "default": 200,
-          "description": "Väntetid efter sista tangenttryck innan förslag hämtas."
+          "description": "Delay after the last keystroke before a suggestion is fetched."
         },
         "freya.autocomplete.maxTokens": {
           "type": "number",
           "default": 256,
-          "description": "Högsta längd på ett förslag (num_predict)."
+          "description": "Maximum length of a suggestion (num_predict)."
         },
         "freya.autocomplete.prefixChars": {
           "type": "number",
           "default": 3000,
-          "description": "Antal tecken före markören som skickas som kontext."
+          "description": "Number of characters before the cursor sent as context."
         },
         "freya.autocomplete.suffixChars": {
           "type": "number",
           "default": 1000,
-          "description": "Antal tecken efter markören som skickas som kontext."
+          "description": "Number of characters after the cursor sent as context."
         }
       }
     },

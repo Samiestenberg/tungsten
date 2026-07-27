@@ -69,7 +69,7 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
       const workdir = workspaceRoot();
       if (!workdir) {
         response.markdown(
-          "Öppna en mapp först — Freya arbetar med filer och behöver en projektrot."
+          "Open a folder first -- Freya works with files and needs a project root."
         );
         return {};
       }
@@ -83,14 +83,14 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
         const guidance = ollamaGuidance(health, [chatModel()], url);
         if (guidance) {
           response.markdown(guidance);
-          return { errorDetails: { message: "Freya: Ollama är inte redo" } };
+          return { errorDetails: { message: "Freya: Ollama is not ready" } };
         }
       }
 
       const { provider, problem, label } = await createChatProvider(ctx);
       if (!provider) {
-        response.markdown(problem ?? "Ingen modell konfigurerad.");
-        return { errorDetails: { message: "Freya: ingen modell konfigurerad" } };
+        response.markdown(problem ?? "No model configured.");
+        return { errorDetails: { message: "Freya: no model configured" } };
       }
 
       response.progress(label);
@@ -107,11 +107,11 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
           confirm: async (command: string) => {
             if (token.isCancellationRequested) return false;
             const answer = await vscode.window.showWarningMessage(
-              "Freya vill köra ett kommando",
+              "Freya wants to run a command",
               { modal: true, detail: command },
-              "Kör"
+              "Run"
             );
-            return answer === "Kör";
+            return answer === "Run";
           },
           onEvent: (e) => {
             if (token.isCancellationRequested) return;
@@ -133,7 +133,7 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
         });
       } catch (err: any) {
         const message = String(err?.message ?? err);
-        response.markdown(`\n\n**Fel:** ${message}`);
+        response.markdown(`\n\n**Error:** ${message}`);
         return { errorDetails: { message } };
       }
 

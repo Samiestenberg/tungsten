@@ -64,7 +64,7 @@ export async function localInfill(
   });
 
   if (!res.ok) {
-    throw new Error(`lokal /infill ${res.status}: ${await res.text()}`);
+    throw new Error(`local /infill ${res.status}: ${await res.text()}`);
   }
   const data: any = await res.json();
   return String(data?.content ?? "");
@@ -98,7 +98,7 @@ export async function localComplete(
   });
 
   if (!res.ok) {
-    throw new Error(`lokal /v1/completions ${res.status}: ${await res.text()}`);
+    throw new Error(`local /v1/completions ${res.status}: ${await res.text()}`);
   }
   const data: any = await res.json();
   return String(data?.choices?.[0]?.text ?? "");

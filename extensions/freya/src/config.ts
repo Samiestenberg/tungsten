@@ -130,14 +130,14 @@ export async function promptAndStoreKeys(
 ): Promise<boolean> {
   const accountId = await vscode.window.showInputBox({
     title: "Freya: Cloudflare Account ID",
-    prompt: "Sparas i VS Codes SecretStorage, inte i settings.json.",
+    prompt: "Stored in VS Code SecretStorage, not in settings.json.",
     ignoreFocusOut: true,
   });
   if (!accountId) return false;
 
   const apiToken = await vscode.window.showInputBox({
     title: "Freya: Cloudflare API Token",
-    prompt: "Behöver behörigheten Workers AI. Sparas i SecretStorage.",
+    prompt: "Needs the Workers AI permission. Stored in SecretStorage.",
     password: true,
     ignoreFocusOut: true,
   });
@@ -192,9 +192,9 @@ export async function createChatProvider(
     return {
       label: "Workers AI",
       problem:
-        "Workers AI saknar nycklar. Kör kommandot **Freya: Ange Cloudflare-nycklar** " +
-        "(Ctrl+Shift+P) — de sparas i OS-nyckelringen.\n\n" +
-        "Vill du köra helt lokalt i stället: sätt `freya.chat.backend` till `ollama`.",
+        "Workers AI has no keys. Run the command **Freya: Set Cloudflare keys** " +
+        "(Ctrl+Shift+P) -- they are stored in the OS keychain.\n\n" +
+        "Prefer to run entirely locally? Set `freya.chat.backend` to `ollama`.",
     };
   }
 

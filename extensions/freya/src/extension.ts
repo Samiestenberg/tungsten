@@ -53,7 +53,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
         await refreshCloudKeyState(ctx);
         void refreshHealth();
         vscode.window.showInformationMessage(
-          "Freya: Cloudflare-nycklar sparade i OS-nyckelringen."
+          "Freya: Cloudflare keys stored in the OS keychain."
         );
       }
     }),
@@ -61,7 +61,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
       await clearKeys(ctx);
       await refreshCloudKeyState(ctx);
       void refreshHealth();
-      vscode.window.showInformationMessage("Freya: nycklar raderade.");
+      vscode.window.showInformationMessage("Freya: keys deleted.");
     }),
     vscode.commands.registerCommand("freya.checkOllama", async () => {
       const url = ollamaUrl();
@@ -74,7 +74,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
       const guidance = ollamaGuidance(health, [...new Set(needed)], url);
       if (!guidance) {
         vscode.window.showInformationMessage(
-          `Freya: Ollama svarar på ${url} och alla modeller finns.`
+          `Freya: Ollama is responding on ${url} and all models are present.`
         );
         return;
       }
@@ -82,13 +82,13 @@ export function activate(ctx: vscode.ExtensionContext): void {
       // Notifieringen är bara vägvisaren dit.
       const open = await vscode.window.showWarningMessage(
         health.reachable
-          ? "Freya: en Ollama-modell saknas."
-          : `Freya: Ollama svarar inte på ${url}.`,
-        "Visa i chatten"
+          ? "Freya: an Ollama model is missing."
+          : `Freya: Ollama is not responding on ${url}.`,
+        "Show in chat"
       );
-      if (open === "Visa i chatten") {
+      if (open === "Show in chat") {
         await vscode.commands.executeCommand("workbench.action.chat.open", {
-          query: "@freya hej",
+          query: "@freya hello",
         });
       }
     }),
@@ -103,7 +103,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
               .getConfiguration("freya")
               .get<string>("chat.workersAiModel");
       vscode.window.showInformationMessage(
-        `Freya chattar via ${backend} (${model}). Autocomplete kör alltid lokalt.`
+        `Freya chats via ${backend} (${model}). Autocomplete always runs locally.`
       );
     })
   );

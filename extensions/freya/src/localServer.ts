@@ -131,7 +131,7 @@ class LocalModelServer {
   private readonly log: vscode.LogOutputChannel;
 
   constructor(private readonly onStateChange: () => void) {
-    this.log = vscode.window.createOutputChannel("Freya (lokal modell)", {
+    this.log = vscode.window.createOutputChannel("Freya (local model)", {
       log: true,
     });
   }
@@ -160,7 +160,7 @@ class LocalModelServer {
         proc.kill("SIGTERM");
       }
     } catch (err) {
-      this.log.warn(`kunde inte stänga llama-server: ${String(err)}`);
+      this.log.warn(`could not stop llama-server: ${String(err)}`);
     }
   }
 
@@ -187,7 +187,7 @@ class LocalModelServer {
 
   private async start(): Promise<LocalEndpoint | undefined> {
     if (cfg().get<boolean>("local.enabled") === false) {
-      this.log.info("inbäddad modell avstängd via freya.local.enabled");
+      this.log.info("embedded model disabled via freya.local.enabled");
       this.failed = true;
       return undefined;
     }
@@ -196,7 +196,7 @@ class LocalModelServer {
     if (!runtime) {
       // Helt normalt i ett dev-träd: resources/freya-runtime är gitignore:ad.
       this.log.info(
-        "ingen inbäddad runtime hittad (resources/freya-runtime) — faller tillbaka på Ollama"
+        "no embedded runtime found (resources/freya-runtime) -- falling back to Ollama"
       );
       this.failed = true;
       return undefined;
@@ -209,7 +209,7 @@ class LocalModelServer {
 
     // Redan igång? Ett andra fönster ska INTE ladda modellen en gång till.
     if (await probeReady(baseUrl, apiKey)) {
-      this.log.info(`återanvänder llama-server som redan kör på ${baseUrl}`);
+      this.log.info(`reusing the llama-server already running on ${baseUrl}`);
       this.endpoint = { baseUrl, apiKey, modelName };
       return this.endpoint;
     }
@@ -231,7 +231,7 @@ class LocalModelServer {
       "--no-webui",
     ];
 
-    this.log.info(`startar ${runtime.exe} på ${baseUrl} med ${modelName}`);
+    this.log.info(`starting ${runtime.exe} on ${baseUrl} with ${modelName}`);
     const proc = cp.spawn(runtime.exe, args, {
       cwd: path.dirname(runtime.exe),
       windowsHide: true,
@@ -242,13 +242,13 @@ class LocalModelServer {
     proc.stderr?.on("data", (b) => this.log.trace(String(b).trimEnd()));
     proc.stdout?.on("data", (b) => this.log.trace(String(b).trimEnd()));
     proc.on("error", (err) => {
-      this.log.error(`llama-server kunde inte startas: ${err.message}`);
+      this.log.error(`llama-server could not be started: ${err.message}`);
       this.failed = true;
       this.proc = undefined;
     });
     proc.on("exit", (code, signal) => {
       if (this.proc === proc) {
-        this.log.warn(`llama-server avslutades (code=${code} signal=${signal})`);
+        this.log.warn(`llama-server exited (code=${code} signal=${signal})`);
         this.proc = undefined;
         this.endpoint = undefined;
         this.onStateChange();
@@ -263,14 +263,14 @@ class LocalModelServer {
         return undefined; // processen dog under uppstart
       }
       if (await probeReady(baseUrl, apiKey)) {
-        this.log.info(`redo efter ${HEALTH_TIMEOUT_MS - (deadline - Date.now())} ms`);
+        this.log.info(`ready after ${HEALTH_TIMEOUT_MS - (deadline - Date.now())} ms`);
         this.endpoint = { baseUrl, apiKey, modelName };
         return this.endpoint;
       }
       await new Promise((r) => setTimeout(r, 250));
     }
 
-    this.log.error(`ingen hälsokoll inom ${HEALTH_TIMEOUT_MS} ms — ger upp`);
+    this.log.error(`no successful health check within ${HEALTH_TIMEOUT_MS} ms -- giving up`);
     this.stop();
     this.failed = true;
     return undefined;

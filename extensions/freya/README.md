@@ -1,128 +1,128 @@
 # Freya
 
-Tungstens inbyggda kodagent. Local-first, BYOK, ingen telemetri.
+Tungsten's built-in coding agent. Local-first, BYOK, no telemetry.
 
-## Arbetsfördelningen
+## The division of labour
 
-Freya har **två laner**, och det är hela designen:
+Freya has **two lanes**, and that is the whole design:
 
-| | Lätt lane | Tung lane |
+| | Light lane | Heavy lane |
 | --- | --- | --- |
-| Vad | autocomplete, commit-meddelanden, kodförklaringar | agent över flera filer, stora refaktoreringar, djupt resonemang |
-| Modell | **inbäddad** Qwen2.5-Coder-1.5B, körd av llama.cpp i appen | Cloudflare Workers AI (qwen3) eller egen Ollama |
-| Krav | inget — följer med appen | egna nycklar, eller en stor modell du själv hämtat |
-| Kostnad | noll, offline | moln, eller din egen hårdvara |
-| Inställning | `freya.light.backend` (default `embedded`) | `freya.chat.backend` (default `auto`) |
+| What | autocomplete, commit messages, code explanations | agent across several files, large refactorings, deep reasoning |
+| Model | **embedded** Qwen2.5-Coder-1.5B, served by llama.cpp inside the app | Cloudflare Workers AI (qwen3) or your own Ollama |
+| Requires | nothing — ships with the app | your own keys, or a large model you pulled yourself |
+| Cost | zero, offline | cloud, or your own hardware |
+| Setting | `freya.light.backend` (default `embedded`) | `freya.chat.backend` (default `auto`) |
 
-Det betyder att appen **fungerar direkt vid nedladdning**: utan Ollama och utan
-moln-nycklar får du ändå autocomplete, commit-meddelanden och förklaringar.
-En stor lokal modell är ett **tillval**, aldrig ett krav.
+This means the app **works straight out of the download**: with no Ollama and no
+cloud keys you still get autocomplete, commit messages and explanations.
+A large local model is an **option**, never a requirement.
 
-`freya.chat.backend: auto` väljer moln när Cloudflare-nycklar finns och annars
-din lokala Ollama. Statusraden nere till höger visar vilken modell som svarar
-i respektive lane.
+`freya.chat.backend: auto` picks cloud when Cloudflare keys exist and your local
+Ollama otherwise. The status bar at the bottom right shows which model answers in
+each lane.
 
-### Den inbäddade modellen
+### The embedded model
 
-Startas som barnprocess på `127.0.0.1:11435` (aldrig 11434 — den är Ollamas)
-och stängs när Tungsten stängs. Uppmätt: ~270 ms per komplettering, 8 av 8
-under 600 ms.
+Started as a child process on `127.0.0.1:11435` (never 11434 — that one belongs
+to Ollama) and shut down when Tungsten exits. Measured: ~270 ms per completion,
+8 out of 8 under 600 ms.
 
-Licenser: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0. Se
-`freya-runtime/THIRD-PARTY-NOTICES.txt` i appens resurser.
+Licences: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0. See
+`freya-runtime/THIRD-PARTY-NOTICES.txt` in the app's resources.
 
-### Den valfria Ollama-vägen
+### The optional Ollama path
 
 ```
-ollama pull qwen2.5-coder:14b        # tung lane, tillval
-ollama pull qwen2.5-coder:1.5b-base  # bara om du sätter light.backend=ollama
+ollama pull qwen2.5-coder:14b        # heavy lane, optional
+ollama pull qwen2.5-coder:1.5b-base  # only if you set light.backend=ollama
 ```
 
-| Modell | Yta | Krav |
+| Model | Surface | Requirement |
 | --- | --- | --- |
-| `qwen2.5-coder:14b` | chatt / agent | Behöver klara verktygsanrop. |
-| `qwen2.5-coder:1.5b-base` | inline-autocomplete | Måste vara en **base**-modell. En instruct-modell klarar inte FIM och svarar med prosa i stället för kod. |
+| `qwen2.5-coder:14b` | chat / agent | Needs to handle tool calls. |
+| `qwen2.5-coder:1.5b-base` | inline autocomplete | Must be a **base** model. An instruct model cannot do FIM and answers with prose instead of code. |
 
-Behövs Ollama men svarar inte, säger Freya det i chattpanelen med exakt vilket
-`ollama pull` som krävs, i statusraden, och via **Freya: Kolla att Ollama och
-modellerna finns**. Freya installerar aldrig Ollama eller några modeller åt dig.
+When Ollama is needed but does not answer, Freya says so in the chat panel with
+the exact `ollama pull` required, in the status bar, and via **Freya: Check that
+Ollama and the models are present**. Freya never installs Ollama or any model
+for you.
 
-## Commit-meddelanden
+## Commit messages
 
-**Freya: Skriv commit-meddelande** (sparkle-knappen i källkontroll-vyn) läser
-`git diff --staged`, skriver ett förslag med den lokala modellen och lägger det
-i commit-fältet. Du redigerar och committar själv — Freya committar aldrig.
+**Freya: Write commit message** (the sparkle button in the Source Control view)
+reads `git diff --staged`, drafts a message with the local model and puts it in
+the commit box. You edit and commit yourself — Freya never commits.
 
-## Hemligheter
+## Secrets
 
-Skanningen körs helt lokalt: mönstermatchning, ingen modell, inga
-nätverksanrop. Den flaggar privata nyckelblock, AWS-nycklar, GitHub-, Slack-,
-OpenAI-, Anthropic- och Google-tokens, JWT:er samt hemligheter i tilldelningar
-och miljövariabler. Platshållare (`process.env.X`, `<din-nyckel>`,
-`changeme`, `xxxx`) flaggas inte.
+The scan runs entirely locally: pattern matching, no model, no network calls. It
+flags private key blocks, AWS keys, GitHub, Slack, OpenAI, Anthropic and Google
+tokens, JWTs, and secrets in assignments and environment variables. Placeholders
+(`process.env.X`, `<your-key>`, `changeme`, `xxxx`) are not flagged.
 
-- **Vid inklistring:** en modal varning med möjlighet att ångra, innan texten
-  hinner sparas.
-- **Löpande:** träffar syns i Problem-panelen.
-- **Före commit:** commit-generatorn skannar de stagade ändringarna och stoppar
-  om något ser ut som en hemlighet. Kommandot **Freya: Skanna stagade
-  ändringar för hemligheter** gör samma sak när du vill.
+- **On paste:** a modal warning with the option to undo, before the text is saved.
+- **Continuously:** hits appear in the Problems panel.
+- **Before commit:** the commit generator scans the staged changes and stops if
+  something looks like a secret. The command **Freya: Scan staged changes for
+  secrets** does the same on demand.
 
-Bara tillagda rader skannas — en borttagen hemlighet är en bra sak. `.env`,
-`.dev.vars` och `.pem` varnas det inte i: det är där hemligheter *ska* ligga
-(samma `SECRET_FILE_PATTERN` som `read_file` använder). De skannas däremot i en
-commit, eftersom det är där de gör skada.
+Only added lines are scanned — a removed secret is a good thing. `.env`,
+`.dev.vars` and `.pem` are not warned about: that is where secrets *belong* (the
+same `SECRET_FILE_PATTERN` that `read_file` uses). They are scanned in a commit,
+because that is where they do damage.
 
-Notera: VS Codes git-extension har ingen pre-commit-hook för extensions, så
-Freya kan inte hindra själva Commit-knappen. Den stoppar de flöden den äger.
+Note: VS Code's git extension has no pre-commit hook for extensions, so Freya
+cannot block the Commit button itself. It stops the flows it owns.
 
-## Inställningar
+## Settings
 
-| Inställning | Default | Vad den gör |
+| Setting | Default | What it does |
 | --- | --- | --- |
-| `freya.chat.backend` | `auto` | TUNG lane: `auto` (moln om nycklar, annars Ollama), `workersai` eller `ollama`. |
-| `freya.light.backend` | `embedded` | LÄTT lane: `embedded` (inbäddad 1.5B) eller `ollama`. |
-| `freya.local.enabled` | `true` | Använd den inbäddade modellen alls. |
-| `freya.local.port` | `11435` | Port för den inbäddade servern. Aldrig 11434. |
-| `freya.ollama.url` | `http://localhost:11434` | Används av både chatt och autocomplete. |
-| `freya.chat.ollamaModel` | `qwen2.5-coder:14b` | Chattmodell i Ollama. |
-| `freya.autocomplete.model` | `qwen2.5-coder:1.5b-base` | FIM-modell. |
-| `freya.autocomplete.enabled` | `true` | Inline-komplettering av/på. |
-| `freya.chat.maxSteps` | `25` | Högsta antal verktygssteg per fråga. |
-| `freya.commit.model` | tom = `chat.ollamaModel` | Modell för commit-meddelanden. Måste vara en instruct-modell. |
-| `freya.secrets.enabled` | `true` | Hemlighets-varningar av/på. |
+| `freya.chat.backend` | `auto` | HEAVY lane: `auto` (cloud if keys, otherwise Ollama), `workersai` or `ollama`. |
+| `freya.light.backend` | `embedded` | LIGHT lane: `embedded` (embedded 1.5B) or `ollama`. |
+| `freya.local.enabled` | `true` | Use the embedded model at all. |
+| `freya.local.port` | `11435` | Port for the embedded server. Never 11434. |
+| `freya.ollama.url` | `http://localhost:11434` | Used by both chat and autocomplete. |
+| `freya.chat.ollamaModel` | `qwen2.5-coder:14b` | Chat model in Ollama. |
+| `freya.autocomplete.model` | `qwen2.5-coder:1.5b-base` | FIM model. |
+| `freya.autocomplete.enabled` | `true` | Inline completion on/off. |
+| `freya.chat.maxSteps` | `25` | Maximum tool steps per question. |
+| `freya.commit.model` | empty = `chat.ollamaModel` | Model for commit messages. Must be an instruct model. |
+| `freya.secrets.enabled` | `true` | Secret warnings on/off. |
 
-## Molnläget (valfritt)
+## Cloud mode (optional)
 
-`freya.chat.backend` = `workersai` kör chatten mot Cloudflare Workers AI med
-dina egna nycklar. Kör **Freya: Ange Cloudflare-nycklar** — de sparas i
-OS-nyckelringen via SecretStorage, aldrig i `settings.json` och aldrig i repot.
-Autocomplete stannar lokal även då.
+`freya.chat.backend` = `workersai` runs the chat against Cloudflare Workers AI
+with your own keys. Run **Freya: Set Cloudflare keys** — they are stored in the
+OS keychain via SecretStorage, never in `settings.json` and never in the repo.
+Autocomplete stays local even then.
 
-Nycklar läses i ordningen SecretStorage → `.env` i arbetsytan → miljövariabler
-(`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`).
+Keys are read in this order: SecretStorage → `.env` in the workspace →
+environment variables (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`).
 
-## Verktyg
+## Tools
 
-Agenten har sex verktyg: `read_file`, `write_file`, `edit_file`, `list_files`,
-`search_files` och `run_command`. `run_command` kräver alltid en bekräftelse
-innan något körs.
+The agent has six tools: `read_file`, `write_file`, `edit_file`, `list_files`,
+`search_files` and `run_command`. `run_command` always requires confirmation
+before anything runs.
 
-Freya går direkt mot sin egen modellprovider och använder aldrig `vscode.lm`
-eller `vscode.lm.tools`. Workbenchens automationsverktyg (MCP-servrar,
-`type_in_page` m.fl.) finns därför inte i modellens verktygslista alls — det är
-en egenskap av konstruktionen, inte ett filter.
+Freya talks straight to its own model provider and never uses `vscode.lm` or
+`vscode.lm.tools`. The workbench automation tools (MCP servers, `type_in_page`
+and friends) are therefore not in the model's tool list at all — that is a
+property of the construction, not a filter.
 
-`read_file` vägrar läsa `.env`, `.dev.vars` och `.pem` (`SECRET_FILE_PATTERN` i
-`src/core/tools.ts`).
+`read_file` refuses to read `.env`, `.dev.vars` and `.pem`
+(`SECRET_FILE_PATTERN` in `src/core/tools.ts`).
 
-## Obetrodda mappar
+## Untrusted folders
 
-Freya är avstängd i obetrodda mappar (`untrustedWorkspaces.supported: false`) —
-den läser och skriver filer och kan köra kommandon, så det är rätt default.
+Freya is disabled in untrusted folders (`untrustedWorkspaces.supported: false`) —
+it reads and writes files and can run commands, so that is the right default.
 
-I restricted mode aktiverar VS Code inte extensionen alls, så Freya kan inte
-säga något själv. Chattpanelen visar därför raden **"Freya är pausad i en
-obetrodd mapp"** med en **Lita på mappen**-knapp. Den kommer från workbenchen
+In restricted mode VS Code does not activate the extension at all, so Freya
+cannot say anything itself. The chat panel therefore shows the row **"Freya is
+paused in an untrusted folder"** with a **Trust the folder** button. That comes
+from the workbench
 (`src/vs/workbench/contrib/chat/browser/viewsWelcome/tungstenRestrictedModeWelcome.ts`),
-inte från den här extensionen.
+not from this extension.

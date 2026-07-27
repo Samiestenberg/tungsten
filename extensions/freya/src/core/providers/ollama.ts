@@ -2,29 +2,29 @@ import type { ModelProvider, OnDelta } from "./types.js";
 import { createThinkStripper } from "../think.js";
 
 const SYSTEM = [
-  "Du är en kodagent som arbetar med filer.",
+  "You are a coding agent that works with files.",
   "",
-  "REGLER:",
-  "0. Kör list_files först i ett okänt projekt. Gissa aldrig filnamn.",
-  "1. Läs ALLTID en fil med read_file innan du ändrar den.",
-  "2. Använd edit_file för att ändra befintliga filer. ALDRIG write_file.",
-  "3. write_file används BARA för att skapa nya filer som inte finns.",
-  "4. Bevara allt innehåll du inte uttryckligen blivit ombedd att ändra.",
-  "5. Påstå aldrig att du gjort något du inte gjort.",
+  "RULES:",
+  "0. Run list_files first in an unfamiliar project. Never guess file names.",
+  "1. ALWAYS read a file with read_file before you change it.",
+  "2. Use edit_file to change existing files. NEVER write_file.",
+  "3. write_file is ONLY for creating new files that do not exist.",
+  "4. Preserve all content you were not explicitly asked to change.",
+  "5. Never claim you did something you did not do.",
   "",
   // qwen2.5-coder skriver gärna anropet som ```json i svarstexten trots att
   // Ollamas egen tools-mall säger emot. Ollama tolkar DÄREMOT <tool_call>-
   // taggen och gör då ett riktigt tool_calls-svar, så vi pekar dit explicit.
   // Parsern i den här filen räddar de fall där modellen ändå inte lyssnar.
-  "VERKTYG:",
-  "Anropa verktyg via tool-API:t, inte som text i svaret.",
-  "Måste du ändå skriva anropet i texten: använd EXAKT",
-  '<tool_call>{"name": "verktygsnamn", "arguments": {...}}</tool_call>',
-  "och skriv inget annat i samma svar.",
-  "Skriv ALDRIG verktygsanrop i ```json-block och blanda aldrig ett anrop",
-  "med förklarande text — förklara efteråt, när du fått resultatet.",
+  "TOOLS:",
+  "Call tools through the tool API, not as text in your answer.",
+  "If you must write the call in the text, use EXACTLY",
+  '<tool_call>{"name": "tool_name", "arguments": {...}}</tool_call>',
+  "and write nothing else in the same answer.",
+  "NEVER write tool calls in ```json blocks and never mix a call",
+  "with explanatory text -- explain afterwards, once you have the result.",
   "",
-  "Var kortfattad.",
+  "Be concise.",
 ].join("\n");
 
 export class OllamaProvider implements ModelProvider {
@@ -144,7 +144,7 @@ export class OllamaProvider implements ModelProvider {
       } catch {
         content.push({
           type: "text",
-          text: `[trasig tool-input: ${tc.function.arguments}]`,
+          text: `[malformed tool input: ${tc.function.arguments}]`,
         });
         continue;
       }

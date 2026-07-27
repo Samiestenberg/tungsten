@@ -1,17 +1,18 @@
-## Allt lätt kör redan lokalt
+## Everything light already runs locally
 
-Freya har en **inbäddad modell** i appen: Qwen2.5-Coder-1.5B (Apache-2.0), körd
-av llama.cpp-server (MIT) som Tungsten startar själv på `127.0.0.1:11435`.
+Freya has an **embedded model** inside the app: Qwen2.5-Coder-1.5B (Apache-2.0),
+served by llama.cpp-server (MIT) which Tungsten starts itself on
+`127.0.0.1:11435`.
 
-Den driver:
+It powers:
 
-- inline-autocomplete (fill-in-the-middle)
-- commit-meddelanden
-- **Freya: Förklara markerad kod**
+- inline autocomplete (fill-in-the-middle)
+- commit messages
+- **Freya: Explain selected code**
 
-Ingen installation, ingen inloggning, ingen nätverkstrafik. Uppmätt
-komplettering: ~270 ms i snitt, 8 av 8 under 600 ms.
+No installation, no sign-in, no network traffic. Measured completion latency:
+~270 ms on average, 8 out of 8 under 600 ms.
 
-Statusraden nere till höger säger vilken modell som svarar. Vill du hellre
-använda din egen Ollama för det lätta: sätt `freya.light.backend` till
-`ollama`.
+The status bar at the bottom right tells you which model is answering. If you
+would rather use your own Ollama for the light work, set `freya.light.backend`
+to `ollama`.

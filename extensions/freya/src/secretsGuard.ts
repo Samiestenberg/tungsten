@@ -50,7 +50,7 @@ function toDiagnostic(
   );
   const d = new vscode.Diagnostic(
     range,
-    `Möjlig hemlighet: ${finding.label} (${finding.preview}). Flytta den till .env eller OS-nyckelringen.`,
+    `Possible secret: ${finding.label} (${finding.preview}). Move it to .env or the OS keychain.`,
     vscode.DiagnosticSeverity.Warning
   );
   d.source = DIAGNOSTIC_SOURCE;
@@ -117,19 +117,19 @@ export function registerSecretsGuard(ctx: vscode.ExtensionContext): void {
     }
 
     const choice = await vscode.window.showWarningMessage(
-      `Freya: ${describeFindings(findings)} i det du klistrade in.`,
+      `Freya: ${describeFindings(findings)} in what you pasted.`,
       {
         modal: true,
         detail:
           `${findings.map((f) => `• ${f.label}: ${f.preview}`).join("\n")}\n\n` +
-          "Hemligheter hör inte i källkod. Lägg dem i .env (som är gitignore:ad) " +
-          "eller i OS-nyckelringen.",
+          "Secrets do not belong in source code. Put them in .env (which is gitignored) " +
+          "or in the OS keychain.",
       },
-      "Ångra inklistringen",
-      "Behåll"
+      "Undo the paste",
+      "Keep"
     );
 
-    if (choice === "Ångra inklistringen") {
+    if (choice === "Undo the paste") {
       // Undo körs på den aktiva editorn; kontrollera att det fortfarande är
       // samma dokument innan vi ångrar något annat.
       if (

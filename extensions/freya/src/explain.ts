@@ -16,16 +16,16 @@ const MAX_CODE_CHARS = 4000;
  */
 function explainPrompt(code: string, languageId: string): string {
   return [
-    "# Forklara kort vad koden gor, pa svenska.",
+    "# Briefly explain what the code does, in English.",
     "",
-    "## Kod (javascript)",
+    "## Code (javascript)",
     "const dubbla = xs => xs.map(x => x * 2);",
-    "## Forklaring",
-    "Returnerar en ny lista dar varje tal har dubblerats.",
+    "## Explanation",
+    "Returns a new list where every number has been doubled.",
     "",
-    `## Kod (${languageId})`,
+    `## Code (${languageId})`,
     code.slice(0, MAX_CODE_CHARS),
-    "## Forklaring",
+    "## Explanation",
     "",
   ].join("\n");
 }
@@ -65,7 +65,7 @@ export function registerExplain(ctx: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("freya.explainSelection", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showInformationMessage("Freya: ingen öppen fil.");
+        vscode.window.showInformationMessage("Freya: no open file.");
         return;
       }
 
@@ -76,7 +76,7 @@ export function registerExplain(ctx: vscode.ExtensionContext): void {
       const code = editor.document.getText(range).trim();
       if (!code) {
         vscode.window.showInformationMessage(
-          "Freya: markera kod (eller ställ markören på en rad med kod)."
+          "Freya: select some code (or put the cursor on a line of code)."
         );
         return;
       }
@@ -86,7 +86,7 @@ export function registerExplain(ctx: vscode.ExtensionContext): void {
       const explanation = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Window,
-          title: "Freya förklarar...",
+          title: "Freya is explaining...",
         },
         async () => {
           const ac = new AbortController();
@@ -105,7 +105,7 @@ export function registerExplain(ctx: vscode.ExtensionContext): void {
 
       if (!explanation) {
         vscode.window.showWarningMessage(
-          "Freya: ingen modell kunde svara. Den inbäddade modellen saknas och Ollama svarar inte."
+          "Freya: no model could answer. The embedded model is missing and Ollama is not responding."
         );
         return;
       }

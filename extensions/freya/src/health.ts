@@ -43,7 +43,7 @@ export async function probeOllama(
       return {
         reachable: false,
         models: [],
-        error: `HTTP ${res.status} från ${url}/api/tags`,
+        error: `HTTP ${res.status} from ${url}/api/tags`,
       };
     }
     const data: any = await res.json();
@@ -57,7 +57,7 @@ export async function probeOllama(
     return {
       reachable: false,
       models: [],
-      error: err?.name === "AbortError" ? `Ingen svarstid inom ${timeoutMs} ms` : String(err?.message ?? err),
+      error: err?.name === "AbortError" ? `No response within ${timeoutMs} ms` : String(err?.message ?? err),
     };
   } finally {
     clearTimeout(timer);
@@ -75,18 +75,18 @@ export function ollamaGuidance(
 ): string | undefined {
   if (!health.reachable) {
     return [
-      `**Ollama svarar inte på ${url}.**`,
+      `**Ollama is not responding on ${url}.**`,
       "",
-      `Freyas chatt och autocomplete kör lokalt via Ollama. Starta den, eller installera från https://ollama.com/download.`,
+      `Freya can use Ollama for chat and autocomplete. Start it, or install it from https://ollama.com/download.`,
       "",
       "```",
       "ollama serve",
       ...needed.map((m) => `ollama pull ${m}`),
       "```",
       "",
-      health.error ? `_Detaljer: ${health.error}_` : "",
+      health.error ? `_Details: ${health.error}_` : "",
       "",
-      "Har du hellre moln? Sätt `freya.chat.backend` till `workersai` och kör **Freya: Ange Cloudflare-nycklar**.",
+      "Prefer the cloud? Set `freya.chat.backend` to `workersai` and run **Freya: Set Cloudflare keys**.",
     ]
       .filter((l) => l !== "")
       .join("\n");
@@ -98,15 +98,15 @@ export function ollamaGuidance(
   }
 
   return [
-    `**Ollama kör, men ${missing.length === 1 ? "modellen saknas" : "modellerna saknas"}.**`,
+    `**Ollama is running, but ${missing.length === 1 ? "the model is missing" : "the models are missing"}.**`,
     "",
-    "Hämta med:",
+    "Pull it with:",
     "",
     "```",
     ...missing.map((m) => `ollama pull ${m}`),
     "```",
     "",
-    `_Hittade i Ollama: ${health.models.length ? health.models.join(", ") : "inga modeller"}_`,
+    `_Found in Ollama: ${health.models.length ? health.models.join(", ") : "no models"}_`,
   ].join("\n");
 }
 
@@ -156,30 +156,30 @@ export function renderHealthStatus(
     l.heavy === "workersai"
       ? l.cloudKeys
         ? "Workers AI"
-        : "Workers AI (nycklar saknas)"
+        : "Workers AI (keys missing)"
       : "Ollama";
 
   // Lätta lanen kör på den inbäddade modellen: då FUNGERAR appen, oavsett vad
   // Ollama gör. Ett Ollama-fel får inte se ut som att allt är trasigt.
   if (lanes?.lightIsEmbedded && lanes.lightModel) {
-    item.text = "$(chip) Freya: 1.5B lokalt";
+    item.text = "$(chip) Freya: 1.5B local";
     item.tooltip =
-      `Lätt (autocomplete, commit, förklara): inbäddad ${lanes.lightModel}\n` +
-      `Tung (agent/chatt): ${heavyText(lanes)}\n\n` +
+      `Light (autocomplete, commit, explain): embedded ${lanes.lightModel}\n` +
+      `Heavy (agent/chat): ${heavyText(lanes)}\n\n` +
       (health.reachable
-        ? `Ollama svarar på ${url}.`
-        : `Ollama svarar inte på ${url} — behövs inte för det lätta.`) +
-      `\n\nKlicka för att kolla Ollama och modellerna.`;
+        ? `Ollama is responding on ${url}.`
+        : `Ollama is not responding on ${url} -- not needed for the light lane.`) +
+      `\n\nClick to check Ollama and the models.`;
     item.backgroundColor = undefined;
     item.show();
     return;
   }
 
   if (!health.reachable) {
-    item.text = "$(warning) Freya: Ollama nere";
+    item.text = "$(warning) Freya: Ollama down";
     item.tooltip =
-      `Ollama svarar inte på ${url}. Klicka för att kolla igen.` +
-      (lanes ? `\n\nIngen inbäddad modell hittad, så det lätta ligger också nere.` : "");
+      `Ollama is not responding on ${url}. Click to check again.` +
+      (lanes ? `\n\nNo embedded model found, so the light lane is down too.` : "");
     item.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.warningBackground"
     );
@@ -189,8 +189,8 @@ export function renderHealthStatus(
 
   const missing = needed.filter((m) => !hasModel(health, m));
   if (missing.length > 0) {
-    item.text = `$(cloud-download) Freya: ${missing.length} modell${missing.length === 1 ? "" : "er"} saknas`;
-    item.tooltip = `Kör: ${missing.map((m) => `ollama pull ${m}`).join(" && ")}`;
+    item.text = `$(cloud-download) Freya: ${missing.length} model${missing.length === 1 ? "" : "s"} missing`;
+    item.tooltip = `Run: ${missing.map((m) => `ollama pull ${m}`).join(" && ")}`;
     item.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.warningBackground"
     );
@@ -202,8 +202,8 @@ export function renderHealthStatus(
   if (lanes) {
     item.text = "$(server) Freya: Ollama";
     item.tooltip =
-      `Lätt: Ollama (ingen inbäddad modell hittad)\n` +
-      `Tung: ${heavyText(lanes)}`;
+      `Light: Ollama (no embedded model found)\n` +
+      `Heavy: ${heavyText(lanes)}`;
     item.backgroundColor = undefined;
     item.show();
     return;

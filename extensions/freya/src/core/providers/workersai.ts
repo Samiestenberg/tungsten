@@ -2,17 +2,17 @@ import type { ModelProvider, OnDelta } from "./types.js";
 import { createThinkStripper } from "../think.js";
 
 const SYSTEM = [
-    "Du är en kodagent som arbetar med filer.",
+    "You are a coding agent that works with files.",
     "",
-    "REGLER:",
-    "0. Kör list_files först i ett okänt projekt. Gissa aldrig filnamn.",
-  "1. Läs ALLTID en fil med read_file innan du ändrar den.",
-    "2. Använd edit_file för att ändra befintliga filer. ALDRIG write_file.",
-    "3. write_file används BARA för att skapa nya filer som inte finns.",
-    "4. Bevara allt innehåll du inte uttryckligen blivit ombedd att ändra.",
-    "5. Påstå aldrig att du gjort något du inte gjort.",
+    "RULES:",
+    "0. Run list_files first in an unfamiliar project. Never guess file names.",
+  "1. ALWAYS read a file with read_file before you change it.",
+    "2. Use edit_file to change existing files. NEVER write_file.",
+    "3. write_file is ONLY for creating new files that do not exist.",
+    "4. Preserve all content you were not explicitly asked to change.",
+    "5. Never claim you did something you did not do.",
     "",
-    "Var kortfattad.",
+    "Be concise.",
   ].join("\n");
 
 export class WorkersAIProvider implements ModelProvider {
@@ -63,7 +63,7 @@ export class WorkersAIProvider implements ModelProvider {
       const delta = evt.choices?.[0]?.delta;
       if (!delta) return;
 
-      // qwen3 strömmar sitt "tänkande" i delta.reasoning / reasoning_content.
+      // qwen3 strömmar sitt "thinking" i delta.reasoning / reasoning_content.
       // Vi vill inte visa det i chatten — bara riktigt svar i delta.content.
       // Ibland läcker det ändå ut som <think>...</think> i delta.content;
       // think-strippern plockar bort det, även när taggen delas mellan chunkar.

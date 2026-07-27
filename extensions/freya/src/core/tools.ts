@@ -48,7 +48,7 @@ function safePath(workdir: string, p: string): string {
   const full = resolve(workdir, p);
   const rel = relative(workdir, full);
   if (rel.startsWith("..") || isAbsolute(rel)) {
-    throw new Error(`Sökväg utanför workdir: ${p}`);
+    throw new Error(`Path outside the workdir: ${p}`);
   }
   return full;
 }
@@ -80,7 +80,7 @@ function truncateFileContent(text: string): string {
   return (
     shown +
     `\n\n[avkortad: visade rad 1-${shownLines} av ${totalLines}. ` +
-    `Använd run_command med findstr/select-string för att söka i resten.]`
+    `Use run_command with findstr/select-string to search the rest.]`
   );
 }
 
@@ -90,14 +90,14 @@ function truncateCommandOutput(text: string): string {
   return (
     shown +
     `\n\n[avkortad: visade ${RUN_COMMAND_MAX_CHARS} av ${text.length} tecken. ` +
-    `Använd findstr/select-string i kommandot för att söka i resten.]`
+    `Use findstr/select-string in the command to search the rest.]`
   );
 }
 
 export const TOOL_SCHEMAS = [
   {
     name: "read_file",
-    description: "Läs en fil relativt projektroten.",
+    description: "Read a file relative to the project root.",
     input_schema: {
       type: "object" as const,
       properties: { path: { type: "string" } },
@@ -107,7 +107,7 @@ export const TOOL_SCHEMAS = [
   {
     name: "write_file",
     description:
-      "Skriv en fil. Skapar mappar vid behov. Skriver över befintlig fil.",
+      "Write a file. Creates folders as needed. Overwrites an existing file.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -120,15 +120,15 @@ export const TOOL_SCHEMAS = [
   {
     name: "edit_file",
     description:
-      "Ändra en del av en fil. old_str måste finnas EXAKT en gång i filen — " +
-      "ta med tillräckligt med omgivande rader för att den ska bli unik. " +
-      "Läs filen först. Använd detta i stället för write_file på befintliga filer.",
+      "Change part of a file. old_str must occur EXACTLY once in the file -- " +
+      "include enough surrounding lines to make it unique. " +
+      "Read the file first. Use this instead of write_file on existing files.",
     input_schema: {
       type: "object" as const,
       properties: {
         path: { type: "string" },
-        old_str: { type: "string", description: "Exakt text som ska ersättas" },
-        new_str: { type: "string", description: "Ny text. Tom sträng raderar." },
+        old_str: { type: "string", description: "Exact text to replace" },
+        new_str: { type: "string", description: "New text. An empty string deletes." },
       },
       required: ["path", "old_str", "new_str"],
     },
@@ -136,19 +136,19 @@ export const TOOL_SCHEMAS = [
   {
     name: "list_files",
     description:
-      "Lista filer och mappar. Använd detta FÖRST för att orientera dig i ett " +
-      "projekt du inte känner till — gissa aldrig filnamn. Sökvägarna som " +
-      "returneras kan användas direkt med read_file och edit_file.",
+      "List files and folders. Use this FIRST to orient yourself in a " +
+      "project you do not know -- never guess file names. The returned paths " +
+      "can be used directly with read_file and edit_file.",
     input_schema: {
       type: "object" as const,
       properties: {
         path: {
           type: "string",
-          description: "Mapp att lista. Utelämna för projektroten.",
+          description: "Folder to list. Omit for the project root.",
         },
         max_depth: {
           type: "number",
-          description: "Antal nivåer djupt. Standard 3.",
+          description: "How many levels deep. Default 3.",
         },
       },
       required: [],
@@ -156,7 +156,7 @@ export const TOOL_SCHEMAS = [
   },
   {
     name: "run_command",
-    description: "Kör ett shell-kommando i projektroten.",
+    description: "Run a shell command in the project root.",
     input_schema: {
       type: "object" as const,
       properties: { command: { type: "string" } },
@@ -166,21 +166,21 @@ export const TOOL_SCHEMAS = [
   {
     name: "search_files",
     description:
-      "Sök efter en textsträng i filer under projektroten. Använd detta för " +
-      "att hitta VAR något är definierat eller används (funktioner, " +
-      "variabler, konfiguration, importer) — läs inte filer på måfå för att " +
-      "leta efter det. Returnerar träffar som fil:radnummer:radinnehåll.",
+      "Search for a text string in files under the project root. Use this to " +
+      "find WHERE something is defined or used (functions, " +
+      "variables, configuration, imports) -- do not read files at random to " +
+      "look for it. Returns hits as file:line:content.",
     input_schema: {
       type: "object" as const,
       properties: {
-        query: { type: "string", description: "Textsträng att söka efter." },
+        query: { type: "string", description: "Text string to search for." },
         path: {
           type: "string",
-          description: "Mapp att söka i. Utelämna för projektroten.",
+          description: "Folder to search in. Omit for the project root.",
         },
         case_sensitive: {
           type: "boolean",
-          description: "Skiftlägeskänslig sökning. Standard false.",
+          description: "Case-sensitive search. Default false.",
         },
       },
       required: ["query"],
@@ -200,7 +200,7 @@ export async function executeTool(
     switch (name) {
         case "read_file": {
             if (SECRET_FILE_PATTERN.test(String(input.path))) {
-              return "NEKAT: filen kan innehålla hemligheter och läses inte";
+              return "DENIED: this file may contain secrets and is not read";
             }
             const full = safePath(workdir, input.path);
             const text = await readFile(full, "utf-8");
@@ -217,8 +217,8 @@ export async function executeTool(
             );
             if (exists) {
               return (
-                `FEL: ${input.path} finns redan. write_file är bara för nya filer. ` +
-                `Läs filen med read_file och använd sedan edit_file för att ändra den.`
+                `ERROR: ${input.path} already exists. write_file is only for new files. ` +
+                `Read it with read_file and then use edit_file to change it.`
               );
             }
     
@@ -235,13 +235,13 @@ export async function executeTool(
         if (count === 0) {
           return (
             `FEL: old_str hittades inte i ${input.path}. ` +
-            `Läs filen igen — texten måste matcha exakt, inklusive indrag och radbrytningar.`
+            `Read the file again -- the text must match exactly, including indentation and line breaks.`
           );
         }
         if (count > 1) {
           return (
-            `FEL: old_str hittades ${count} gånger i ${input.path}. ` +
-            `Ta med fler omgivande rader så att den blir unik.`
+            `ERROR: old_str was found ${count} times in ${input.path}. ` +
+            `Include more surrounding lines so it becomes unique.`
           );
         }
 
@@ -250,7 +250,7 @@ export async function executeTool(
 
         const before = original.split("\n").length;
         const after = updated.split("\n").length;
-        return `Ändrade ${input.path} (${before} → ${after} rader)`;
+        return `Changed ${input.path} (${before} -> ${after} lines)`;
       }
       case "list_files": {
         const root = resolve(workdir);
@@ -262,7 +262,7 @@ export async function executeTool(
         if (out.length === 0) return "(tom mapp)";
         const note =
           out.length >= cap
-            ? `\n(avkortad vid ${cap} poster — lista en undermapp för mer)`
+            ? `\n(truncated at ${cap} entries -- list a subfolder for more)`
             : "";
         return out.join("\n") + note;
       }
@@ -271,7 +271,7 @@ export async function executeTool(
         if (confirm) {
           const ok = await confirm(input.command);
           if (!ok) {
-            return "AVBRUTET: användaren nekade kommandot. Kör det inte igen. Fråga vad som ska göras i stället.";
+            return "ABORTED: the user denied the command. Do not run it again. Ask what to do instead.";
           }
         }
         const { stdout, stderr } = await execAsync(input.command, {
@@ -320,15 +320,15 @@ export async function executeTool(
           }
         }
 
-        if (hits.length === 0) return `(inga träffar för "${input.query}")`;
+        if (hits.length === 0) return `(no matches for "${input.query}")`;
         const note = truncated
-          ? `\n[avkortad: visade de första ${cap} träffarna — sök i en snävare undermapp för fler.]`
+          ? `\n[truncated: showed the first ${cap} matches -- search a narrower subfolder for more.]`
           : "";
         return hits.join("\n") + note;
       }
 
       default:
-        return `Okänt verktyg: ${name}`;
+        return `Unknown tool: ${name}`;
     }
   } catch (err: any) {
     return `FEL: ${err.message}`;

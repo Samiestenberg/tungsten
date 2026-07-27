@@ -22,21 +22,21 @@ const MAX_DIFF_CHARS = 12_000;
 // Exemplen är medvetet orelaterade till kod-diffar så att modellen inte
 // härmar deras innehåll i stället för att beskriva den faktiska ändringen.
 const SYSTEM = [
-  "Du skriver commit-meddelanden. Svara med ENDAST meddelandet.",
+  "You write commit messages. Reply with ONLY the message.",
   "",
-  "RUBRIKEN (första raden) är det viktigaste:",
-  "- HÖGST 50 TECKEN. Räkna. En rubrik på 60 tecken är FEL svar.",
-  "- Imperativ svenska: 'lägg till', 'fixa', 'ta bort'.",
-  "- Ingen punkt på slutet. Inga prefix som 'feat:' eller 'fix:'.",
+  "THE SUBJECT (first line) is what matters most:",
+  "- AT MOST 50 CHARACTERS. Count them. A 60-character subject is a WRONG answer.",
+  "- Imperative mood: 'add', 'fix', 'remove'.",
+  "- No trailing period. No prefixes such as 'feat:' or 'fix:'.",
   "",
-  "Exempel på RÄTT rubriker (räkna tecknen):",
-  "  fixa krasch när filen saknas             (27 tecken)",
-  "  ta bort oanvänd import                   (22 tecken)",
-  "  byt cache-nyckel till projekt-id         (32 tecken)",
+  "Examples of CORRECT subjects (count the characters):",
+  "  fix crash when the file is missing       (33 characters)",
+  "  remove unused import                     (20 characters)",
+  "  switch cache key to project id           (30 characters)",
   "",
-  "Efter rubriken: tom rad, sedan högst tre punkter '- ' om det behövs.",
-  "Beskriv VAD ändringen gör, inte vilka filer som rörts.",
-  "Ingen markdown, inga citattecken, inga kodblock.",
+  "After the subject: a blank line, then at most three '- ' bullets if needed.",
+  "Describe WHAT the change does, not which files were touched.",
+  "No markdown, no quotes, no code blocks.",
 ].join("\n");
 
 /** Rubrikbudget. Modellen instrueras om den; koden garanterar den. */
@@ -48,7 +48,7 @@ function truncateDiff(diff: string): string {
   }
   return (
     diff.slice(0, MAX_DIFF_CHARS) +
-    `\n\n[... diffen klippt, ${diff.length - MAX_DIFF_CHARS} tecken kvar]`
+    `\n\n[... diff truncated, ${diff.length - MAX_DIFF_CHARS} characters remaining]`
   );
 }
 
@@ -64,7 +64,7 @@ export function cleanMessage(raw: string): string {
 
   const lines = text.split(/\r?\n/);
   // Modellen inleder ibland med "Här är ett förslag:".
-  while (lines.length > 1 && /^(här (är|kommer)|förslag|commit)\b/i.test(lines[0])) {
+  while (lines.length > 1 && /^(here (is|are)|suggestion|suggested|commit message)\b/i.test(lines[0])) {
     lines.shift();
     while (lines.length && lines[0].trim() === "") {
       lines.shift();
@@ -99,22 +99,22 @@ export function cleanMessage(raw: string): string {
  */
 function fewShotCommitPrompt(diff: string): string {
   return [
-    "# Skriv en kort commit-rubrik pa svenska for varje diff.",
+    "# Write a short commit subject in English for each diff.",
     "",
     "## Diff",
     "+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }",
-    "## Rubrik",
-    "lagg till clamp-hjalpfunktion",
+    "## Subject",
+    "add clamp helper",
     "",
     "## Diff",
     "-const PORT = 3000;",
     "+const PORT = Number(process.env.PORT ?? 3000);",
-    "## Rubrik",
-    "las porten fran miljovariabel",
+    "## Subject",
+    "read port from environment variable",
     "",
     "## Diff",
     truncateDiff(diff),
-    "## Rubrik",
+    "## Subject",
     "",
   ].join("\n");
 }
@@ -162,7 +162,7 @@ async function generate(
           { role: "system", content: SYSTEM },
           {
             role: "user",
-            content: `Skriv ett commit-meddelande för den här diffen:\n\n${truncateDiff(diff)}`,
+            content: `Write a commit message for this diff:\n\n${truncateDiff(diff)}`,
           },
         ],
       }),
@@ -187,7 +187,7 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
 
   if (!repo) {
     vscode.window.showWarningMessage(
-      "Freya: hittade inget git-repo i arbetsytan."
+      "Freya: no git repository found in the workspace."
     );
     return;
   }
@@ -195,7 +195,7 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
   const diff = await repo.diff(true);
   if (!diff.trim()) {
     vscode.window.showInformationMessage(
-      "Freya: inget är stagat. Lägg till ändringar med git add först."
+      "Freya: nothing is staged. Add changes with git add first."
     );
     return;
   }
@@ -212,7 +212,7 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
       // Samma vägledning som chattpanelen ger, men här som notifiering.
       const guidance = ollamaGuidance(health, [model], url);
       vscode.window.showWarningMessage(
-        `Freya: kan inte generera commit-meddelande. ${health.reachable ? `Modellen ${model} saknas — kör: ollama pull ${model}` : `Ollama svarar inte på ${url}.`}`
+        `Freya: cannot generate a commit message. ${health.reachable ? `Model ${model} is missing -- run: ollama pull ${model}` : `Ollama is not responding on ${url}.`}`
       );
       console.warn(`[freya] commit-generator: ${guidance}`);
       return;
@@ -222,14 +222,14 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
   // Hemlighetskoll på det som ska committas, innan vi ens skriver ett
   // meddelande åt det. Se secretsStaged.ts om varför blockeringen sitter här
   // och inte i git-extensionens commit-knapp.
-  if (!(await confirmStagedIsClean(repo, "Skriv meddelande ändå"))) {
+  if (!(await confirmStagedIsClean(repo, "Write message anyway"))) {
     return;
   }
 
   const message = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.SourceControl,
-      title: "Freya skriver commit-meddelande...",
+      title: "Freya is writing a commit message...",
       cancellable: true,
     },
     async (_progress, token) => {
@@ -242,7 +242,7 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
 
   if (!message) {
     vscode.window.showWarningMessage(
-      "Freya: modellen gav inget meddelande. Försök igen."
+      "Freya: the model returned no message. Try again."
     );
     return;
   }
@@ -252,14 +252,14 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
   const existing = repo.inputBox.value.trim();
   if (existing && existing !== message) {
     const choice = await vscode.window.showInformationMessage(
-      "Freya: det står redan text i commit-fältet.",
-      { modal: true, detail: `Förslag:\n\n${message}` },
-      "Ersätt",
-      "Lägg till efter"
+      "Freya: there is already text in the commit box.",
+      { modal: true, detail: `Suggestion:\n\n${message}` },
+      "Replace",
+      "Append"
     );
-    if (choice === "Ersätt") {
+    if (choice === "Replace") {
       repo.inputBox.value = message;
-    } else if (choice === "Lägg till efter") {
+    } else if (choice === "Append") {
       repo.inputBox.value = `${existing}\n\n${message}`;
     }
     return;

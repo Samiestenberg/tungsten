@@ -3,23 +3,22 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Chattpanelens rad för obetrodda mappar.
+// The chat panel's row for untrusted folders.
 //
-// VARFÖR DEN LIGGER HÄR OCH INTE I extensions/freya: Freya deklarerar
-// `untrustedWorkspaces.supported: false`, vilket betyder att VS Code inte
-// aktiverar extensionen alls i restricted mode -- den får aldrig en chans att
-// rendera något. Verifierat: i en obetrodd mapp finns ingen
-// `_doActivateExtension tungsten.freya` i exthost-loggen. Raden måste därför
-// komma från workbenchen.
+// WHY THIS LIVES HERE AND NOT IN extensions/freya: Freya declares
+// `untrustedWorkspaces.supported: false`, which means VS Code does not activate
+// the extension at all in restricted mode -- it never gets a chance to render
+// anything. Verified: in an untrusted folder there is no
+// `_doActivateExtension tungsten.freya` in the exthost log. The row therefore
+// has to come from the workbench.
 //
-// Utan den här filen visade panelen sin generiska "Build with Agent"-yta med
-// ett fungerande inmatningsfält men ingen participant bakom -- alltså exakt
-// det tysta försvinnandet vi ville bort från. Skriver man i fältet händer
-// ingenting alls.
+// Without this file the panel showed its generic "Build with Agent" surface with
+// a working input box but no participant behind it -- exactly the silent
+// disappearance we wanted rid of. Typing in that box did nothing at all.
 //
-// chatViewsWelcome-registret är rätt mekanism: ChatViewPane#shouldShowWelcome()
-// är redan true när det inte finns någon default-agent, och en obetrodd mapp är
-// precis det fallet. Registret var bara tomt sedan Copilot togs bort.
+// The chatViewsWelcome registry is the right mechanism: ChatViewPane#shouldShowWelcome()
+// is already true when there is no default agent, and an untrusted folder is
+// precisely that case. The registry was simply empty after Copilot was removed.
 
 import { MarkdownString } from '../../../../../base/common/htmlContent.js';
 import { Codicon } from '../../../../../base/common/codicons.js';
@@ -29,19 +28,19 @@ import { MANAGE_TRUST_COMMAND_ID, WorkspaceTrustContext } from '../../../workspa
 import { chatViewsWelcomeRegistry } from './chatViewsWelcome.js';
 
 export function registerTungstenRestrictedModeWelcome(): void {
-	// `firstLinkToButton` i ChatViewWelcomePart gör första länken till en knapp,
-	// så command-länken nedan blir "Lita på mappen"-knappen.
+	// `firstLinkToButton` in ChatViewWelcomePart turns the first link into a
+	// button, so the command link below becomes the "Trust the folder" button.
 	const content = new MarkdownString(
 		localize(
 			'tungsten.chat.restrictedMode.content',
-			"Freya läser och skriver filer och kan köra kommandon, så agenten är avstängd i mappar du inte har litat på.\n\n[Lita på mappen]({0})",
+			"Freya reads and writes files and can run commands, so the agent is disabled in folders you have not trusted.\n\n[Trust the folder]({0})",
 			`command:${MANAGE_TRUST_COMMAND_ID}`
 		),
 		{ isTrusted: { enabledCommands: [MANAGE_TRUST_COMMAND_ID] } }
 	);
 
 	chatViewsWelcomeRegistry.register({
-		title: localize('tungsten.chat.restrictedMode.title', "Freya är pausad i en obetrodd mapp"),
+		title: localize('tungsten.chat.restrictedMode.title', "Freya is paused in an untrusted folder"),
 		icon: Codicon.shield,
 		content,
 		when: ContextKeyExpr.and(

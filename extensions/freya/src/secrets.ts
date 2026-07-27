@@ -22,7 +22,7 @@ export interface SecretRule {
 export const SECRET_RULES: readonly SecretRule[] = [
   {
     id: "private-key",
-    label: "privat nyckel",
+    label: "private key",
     pattern: /-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY(?: BLOCK)?-----/g,
   },
   {
@@ -37,28 +37,28 @@ export const SECRET_RULES: readonly SecretRule[] = [
   },
   {
     id: "github-token",
-    label: "GitHub-token",
+    label: "GitHub token",
     pattern: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{50,}\b/g,
   },
   {
     id: "slack-token",
-    label: "Slack-token",
+    label: "Slack token",
     pattern: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g,
   },
   {
     id: "anthropic-key",
-    label: "Anthropic API-nyckel",
+    label: "Anthropic API key",
     pattern: /\bsk-ant-[A-Za-z0-9_-]{20,}\b/g,
   },
   {
     id: "openai-key",
-    label: "OpenAI-nyckel",
+    label: "OpenAI key",
     // sk-ant- fångas av regeln ovan; negativ lookahead så den inte dubbelflaggas.
     pattern: /\bsk-(?!ant-)[A-Za-z0-9_-]{20,}\b/g,
   },
   {
     id: "google-api-key",
-    label: "Google API-nyckel",
+    label: "Google API key",
     pattern: /\bAIza[0-9A-Za-z_-]{35}\b/g,
   },
   {
@@ -68,14 +68,14 @@ export const SECRET_RULES: readonly SecretRule[] = [
   },
   {
     id: "assigned-secret",
-    label: "hemlighet i tilldelning",
+    label: "secret in assignment",
     // Namn som betyder hemlighet + ett värde som ser ut som ett riktigt värde.
     pattern:
       /\b(?:api[_-]?key|api[_-]?secret|access[_-]?token|auth[_-]?token|client[_-]?secret|secret[_-]?key|password|passwd|private[_-]?token|refresh[_-]?token)\b\s*[:=]\s*["']([^"'\n]{12,})["']/gi,
   },
   {
     id: "env-assigned-secret",
-    label: "hemlighet i miljövariabel",
+    label: "secret in environment variable",
     // .env-stil utan citattecken: NAMN=värde till radslut.
     pattern:
       /^[ \t]*(?:export[ \t]+)?[A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASSWORD|PASSWD)[A-Z0-9_]*[ \t]*=[ \t]*(?!["'\s]*$)([^\s"'#][^\n#]{11,})$/gm,
@@ -177,7 +177,7 @@ export function scanText(text: string): SecretFinding[] {
 export function describeFindings(findings: readonly SecretFinding[]): string {
   const labels = [...new Set(findings.map((f) => f.label))];
   const what =
-    findings.length === 1 ? "1 möjlig hemlighet" : `${findings.length} möjliga hemligheter`;
+    findings.length === 1 ? "1 possible secret" : `${findings.length} possible secrets`;
   return `${what} (${labels.join(", ")})`;
 }
 

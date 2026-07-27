@@ -1,12 +1,13 @@
-## Chatten
+## The chat
 
-Freya är default-deltagaren i chattpanelen — du behöver inte skriva `@freya`.
+Freya is the default participant in the chat panel — you do not need to type
+`@freya`.
 
-- `Ctrl+Alt+I` öppnar chatten.
-- Agenten har sex verktyg: läsa, skriva och redigera filer, lista och söka i
-  arbetsytan, och köra kommandon. Kommandon kräver alltid en bekräftelse först.
-- Freya använder aldrig `vscode.lm.tools`, så workbenchens automationsverktyg
-  ligger utanför modellens räckvidd.
+- `Ctrl+Alt+I` opens the chat.
+- The agent has six tools: read, write and edit files, list and search the
+  workspace, and run commands. Commands always require confirmation first.
+- Freya never uses `vscode.lm.tools`, so the workbench automation tools are out
+  of the model's reach.
 
-Vill du köra i molnet i stället: sätt `freya.chat.backend` till `workersai` och
-kör **Freya: Ange Cloudflare-nycklar**. Autocomplete stannar lokal oavsett.
+To run in the cloud instead, set `freya.chat.backend` to `workersai` and run
+**Freya: Set Cloudflare keys**. Autocomplete stays local either way.

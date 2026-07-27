@@ -65,7 +65,7 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
           isBYOK: true,
           isDefault: true,
           isUserSelectable: true,
-          detail: backend === "ollama" ? "Lokal (Ollama)" : "Cloudflare Workers AI",
+          detail: backend === "ollama" ? "Local (Ollama)" : "Cloudflare Workers AI",
         } satisfies vscode.LanguageModelChatInformation,
       ];
     },
@@ -80,7 +80,7 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
       const { provider: model, problem } = await createChatProvider(ctx);
       if (!model) {
         progress.report(
-          new vscode.LanguageModelTextPart(problem ?? "Ingen modell konfigurerad.")
+          new vscode.LanguageModelTextPart(problem ?? "No model configured.")
         );
         return;
       }

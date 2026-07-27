@@ -1,15 +1,15 @@
-## Tyngre arbete
+## Heavier work
 
-Agent-arbete över flera filer, stora refaktoreringar och djupt resonemang vill
-ha en större modell än 1.5B. Freya kräver **inte** att du kör en stor modell
-lokalt — den tunga lanen är moln som standard.
+Agent work across several files, large refactorings and deep reasoning want a
+model bigger than 1.5B. Freya does **not** require you to run a large model
+locally — the heavy lane is cloud by default.
 
-| Val | Vad som behövs |
+| Option | What it needs |
 | --- | --- |
-| Cloudflare Workers AI | Egna nycklar. Kör **Freya: Ange Cloudflare-nycklar** — de sparas i OS-nyckelringen. |
-| Egen Ollama | `ollama pull qwen2.5-coder:14b`. Valfritt tillval för den som har hårdvaran. |
+| Cloudflare Workers AI | Your own keys. Run **Freya: Set Cloudflare keys** — they are stored in the OS keychain. |
+| Your own Ollama | `ollama pull qwen2.5-coder:14b`. An optional extra for those with the hardware. |
 
-`freya.chat.backend` är `auto`: moln när nycklar finns, annars din Ollama.
+`freya.chat.backend` is `auto`: cloud when keys exist, otherwise your Ollama.
 
-Den lätta lanen påverkas inte av det här valet — den ligger kvar på den
-inbäddade modellen och fungerar även utan både nycklar och Ollama.
+The light lane is unaffected by this choice — it stays on the embedded model and
+works even without both keys and Ollama.
