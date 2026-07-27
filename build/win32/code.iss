@@ -8,14 +8,15 @@
 AppId={#AppId}
 AppName={#NameLong}
 AppVerName={#NameVersion}
-AppPublisher=Microsoft Corporation
-AppPublisherURL=https://code.visualstudio.com/
-AppSupportURL=https://code.visualstudio.com/
-AppUpdatesURL=https://code.visualstudio.com/
+; Tungsten är inte Microsoft. Att stå kvar som "Microsoft Corporation" i
+; Program och funktioner vore fel oavsett vad SmartScreen råkar säga om en
+; osignerad binär. URL-raderna är borta med flit: det finns ingen hemsida än,
+; och en död länk i Program och funktioner är sämre än ingen länk alls.
+AppPublisher={#NameLong}
 DefaultGroupName={#NameLong}
 AllowNoIcons=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=VSCodeSetup
+OutputBaseFilename={#NameShort}Setup-{#InstallTarget}-{#Arch}-{#Version}
 Compression=lzma
 SolidCompression=yes
 AppMutex={code:GetAppMutex}
@@ -1310,6 +1311,54 @@ Root: {#EnvironmentRootKey}; Subkey: "Software\Microsoft\Windows\CurrentVersion\
 function IsBackgroundUpdate(): Boolean;
 begin
   Result := ExpandConstant('{param:update|false}') <> 'false';
+end;
+
+// "OKÄND UTGIVARE"-SIDAN.
+//
+// Tungsten är osignerat, så SmartScreen kallar utgivaren okänd. Den varningen
+// kommer att synas; frågan är bara om användaren får veta VARFÖR av oss eller
+// får gissa själv. Den här sidan säger det rakt ut, före installationen.
+//
+// Påståendena nedan är INTE säljtext -- var och en är mätt i det packade
+// bygget innan den skrevs in här:
+//   * llama-server lyssnar på 127.0.0.1:11435 och ingen annanstans
+//     (Get-NetTCPConnection: LISTEN 127.0.0.1:11435, aldrig 0.0.0.0).
+//   * Molnlanan byggs bara när användarens egna Cloudflare-nycklar finns
+//     (config.ts createChatProvider); utan nycklar blir det ingen provider.
+//   * product.json saknar enableTelemetry, aiConfig, updateUrl och appCenter.
+//     Följden, verifierad i loggen: "update#ctor - updates are disabled as
+//     there is no update URL", extHostTelemetry.log 0 byte, och
+//     crashReporter.start körs med uploadToServer=false (src/main.ts).
+// Ändrar någon detta i koden måste texten ändras med -- annars ljuger vi.
+//
+// Texten är engelsk och inte lokaliserad. Resten av wizarden lokaliseras via
+// build/win32/i18n/*.isl; att lägga in de här styckena där är ett eget jobb.
+var
+  UnsignedNoticePage: TOutputMsgWizardPage;
+
+procedure CreateUnsignedNoticePage();
+begin
+  UnsignedNoticePage := CreateOutputMsgPage(wpLicense,
+    'Before you install',
+    'Windows may warn you about an unknown publisher',
+    'Tungsten is not code-signed, so Windows SmartScreen may say the publisher is unknown.' + #13#10 + #13#10 +
+    'That is not a sign that anything is wrong with this installer. We chose not to buy a Windows code-signing certificate (several thousand kronor per year) and to put that money into the product instead.' + #13#10 + #13#10 +
+    'To continue past the warning, click "More info" and then "Run anyway".' + #13#10 + #13#10 +
+    'What Tungsten does with your code:' + #13#10 +
+    '  -  Tungsten runs an AI model locally on your computer. The local model listens on 127.0.0.1 only, so in local mode your code does not leave the machine.' + #13#10 +
+    '  -  The cloud model is used only if you turn it on yourself, with your own Cloudflare key.' + #13#10 +
+    '  -  No telemetry, no crash reports sent, and no update checks.');
+end;
+
+procedure InitializeWizard();
+begin
+  // Bakgrundsuppdateringar kör /VERYSILENT och visar ingen wizard alls, så
+  // sidan är bara i vägen för en människa som faktiskt installerar.
+  // IsNotBackgroundUpdate() deklareras längre ner i filen och går inte att
+  // anropa här -- Pascal Script kräver deklaration före användning.
+  if not IsBackgroundUpdate() then begin
+    CreateUnsignedNoticePage();
+  end;
 end;
 
 function IsNotBackgroundUpdate(): Boolean;
