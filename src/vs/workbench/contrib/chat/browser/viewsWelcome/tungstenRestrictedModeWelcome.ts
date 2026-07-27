@@ -5,12 +5,18 @@
 
 // The chat panel's row for untrusted folders.
 //
-// WHY THIS LIVES HERE AND NOT IN extensions/freya: Freya declares
-// `untrustedWorkspaces.supported: false`, which means VS Code does not activate
-// the extension at all in restricted mode -- it never gets a chance to render
-// anything. Verified: in an untrusted folder there is no
-// `_doActivateExtension tungsten.freya` in the exthost log. The row therefore
-// has to come from the workbench.
+// WHY THIS LIVES HERE AND NOT IN extensions/freya: the chat panel's own model
+// picker is disabled by the workbench in restricted mode (see
+// modelPickerItemSections.ts), so a row that depends on a language model being
+// available cannot come from the extension. This one is workbench-side and
+// therefore always renders.
+//
+// It used to be the ONLY thing standing between a first-time user and silence:
+// Freya declared `untrustedWorkspaces.supported: false` and was not activated at
+// all in an untrusted folder. That is no longer the case -- the manifest now says
+// `"limited"`, so the extension activates, the embedded 1.5B starts, and the
+// light lane (autocomplete, commit messages, explanations) works while the agent
+// stays off. This row remains as the chat panel's half of that message.
 //
 // Without this file the panel showed its generic "Build with Agent" surface with
 // a working input box but no participant behind it -- exactly the silent

@@ -5,6 +5,7 @@
 // förslag, inget svar, ingen förklaring. Den här filen gör felet läsbart och
 // säger exakt vilket kommando som fixar det. Den installerar aldrig något.
 import * as vscode from "vscode";
+import { TRUST_COMMAND } from "./trust.js";
 
 export interface OllamaHealth {
   /** Svarade Ollama på /api/tags? */
@@ -138,6 +139,8 @@ export interface LaneStatus {
   heavy: "workersai" | "ollama";
   /** true när molnnycklar finns. */
   cloudKeys: boolean;
+  /** false i en obetrodd mapp: agenten är pausad, lätta lanen kör. */
+  trusted: boolean;
 }
 
 /**
@@ -158,6 +161,31 @@ export function renderHealthStatus(
         ? "Workers AI"
         : "Workers AI (keys missing)"
       : "Ollama";
+
+  // OBETRODD MAPP FÖRST. Agenten är av, och det är det viktigaste att veta --
+  // annars ser en tyst agent ut som en trasig app. Raden pekar på VS Codes egen
+  // trust-dialog i stället för Ollama-kollen, för det är det som löser läget.
+  if (lanes && !lanes.trusted) {
+    const light =
+      lanes.lightIsEmbedded && lanes.lightModel
+        ? `Light lane is running on the embedded ${lanes.lightModel}: inline completions, commit messages and explanations all work.`
+        : `Light lane: ${lanes.lightModel ?? "Ollama"}.`;
+    item.text = "$(shield) Freya: agent paused";
+    item.tooltip =
+      "This folder is not trusted, so Freya's agent is off -- it can write " +
+      "files and run commands.\n\n" +
+      light +
+      "\n\nClick to trust this folder and turn the agent on.";
+    item.command = TRUST_COMMAND;
+    item.backgroundColor = new vscode.ThemeColor(
+      "statusBarItem.warningBackground"
+    );
+    item.show();
+    return;
+  }
+
+  // Tillbaka till Ollama-kollen när mappen väl är betrodd.
+  item.command = "freya.checkOllama";
 
   // Lätta lanen kör på den inbäddade modellen: då FUNGERAR appen, oavsett vad
   // Ollama gör. Ett Ollama-fel får inte se ut som att allt är trasigt.

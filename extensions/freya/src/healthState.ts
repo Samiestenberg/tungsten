@@ -13,6 +13,7 @@ import {
   ollamaUrl,
 } from "./config.js";
 import { localState } from "./localServer.js";
+import { isTrusted } from "./trust.js";
 import {
   createHealthStatusItem,
   probeOllama,
@@ -50,6 +51,7 @@ export async function refreshHealth(): Promise<void> {
       lightIsEmbedded: lightBackend() === "embedded" && !!local.endpoint,
       heavy: chatBackend(),
       cloudKeys: hasCloudKeys(),
+      trusted: isTrusted(),
     });
   } finally {
     refreshing = false;

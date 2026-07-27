@@ -18,6 +18,7 @@ import * as vscode from "vscode";
 import { runAgent } from "./core/agent.js";
 import { createChatProvider, workspaceRoot, chatBackend, ollamaUrl, chatModel } from "./config.js";
 import { ollamaGuidance, probeOllama } from "./health.js";
+import { agentPausedMarkdown, isTrusted } from "./trust.js";
 
 export const FREYA_ID = "tungsten.freya";
 
@@ -66,6 +67,15 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
   const participant = vscode.chat.createChatParticipant(
     FREYA_ID,
     async (request, context, response, token) => {
+      // Trust-grinden ligger FÖRST, före allt annat. Agenten kan skriva filer
+      // och köra kommandon; i en obetrodd mapp ska den inte ens nå modellen.
+      // Att svara här i stället för att låta tillägget vara oregistrerat är
+      // hela poängen: användaren får ett besked med en knapp, inte tystnad.
+      if (!isTrusted()) {
+        response.markdown(agentPausedMarkdown());
+        return {};
+      }
+
       const workdir = workspaceRoot();
       if (!workdir) {
         response.markdown(

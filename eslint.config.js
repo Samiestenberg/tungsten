@@ -11,7 +11,15 @@ import tseslint from 'typescript-eslint';
 
 import stylisticTs from '@stylistic/eslint-plugin-ts';
 import * as pluginLocal from './.eslint-plugin-local/index.ts';
-import * as pluginCopilotLocal from './extensions/copilot/.eslintplugin/index.ts';
+// The Copilot extension's own eslint plugin used to be imported here.
+// extensions/copilot was deleted in "Steg 2: ta bort GitHub Copilot ur
+// Tungsten", but this import stayed behind -- and an ESM import of a file that
+// does not exist takes down the WHOLE eslint config, not just the copilot
+// rules. The effect was that no change under src/ could be committed at all:
+// the pre-commit hook died on ERR_MODULE_NOT_FOUND.
+// The rules that used the plugin targeted extensions/copilot/** exclusively and
+// were removed with it. The remaining copilot globs in this file match no files
+// and are therefore inert; they are left alone here.
 import pluginImport from 'eslint-plugin-import';
 import pluginJsdoc from 'eslint-plugin-jsdoc';
 
@@ -2532,7 +2540,6 @@ export default defineConfig(
 		},
 		plugins: {
 			'import': pluginImport,
-			'copilot-local': pluginCopilotLocal,
 		},
 		rules: {
 			'local/code-no-dangerous-type-assertions': 'off',
@@ -2635,28 +2642,6 @@ export default defineConfig(
 					]
 				}
 			],
-			'copilot-local/no-instanceof-uri': ['warn'],
-			'copilot-local/no-test-imports': ['warn'],
-			'copilot-local/no-runtime-import': [
-				'warn',
-				{
-					test: ['vscode'],
-					'src/**/common/**/*': ['vscode'],
-					'src/**/node/**/*': ['vscode']
-				}
-			],
-			'copilot-local/no-funny-filename': ['warn'],
-			'copilot-local/no-bad-gdpr-comment': ['warn'],
-			'copilot-local/no-gdpr-event-name-mismatch': ['warn'],
-			'copilot-local/no-unlayered-files': ['warn'],
-			'copilot-local/no-restricted-copilot-pr-string': [
-				'warn',
-				{
-					className: 'GitHubPullRequestProviders',
-					string: 'Generate with Copilot'
-				}
-			],
-			'copilot-local/no-nls-localize': ['warn'],
 		}
 	},
 	// copilot extension - allow node imports in node layer
@@ -2681,31 +2666,6 @@ export default defineConfig(
 		rules: {
 			'copilot-local/no-unlayered-files': 'off',
 			'no-restricted-imports': 'off'
-		}
-	},
-	// copilot extension - TSX linebreak rule
-	{
-		files: [
-			'extensions/copilot/src/extension/**/*.tsx',
-		],
-		plugins: {
-			'copilot-local': pluginCopilotLocal,
-		},
-		rules: {
-			'copilot-local/no-missing-linebreak': 'warn'
-		}
-	},
-	// copilot extension - test-only rule
-	{
-		files: [
-			'extensions/copilot/**/*.test.ts',
-			'extensions/copilot/**/*.test.tsx',
-		],
-		plugins: {
-			'copilot-local': pluginCopilotLocal,
-		},
-		rules: {
-			'copilot-local/no-test-only': 'warn'
 		}
 	},
 	// copilot extension - no-explicit-any

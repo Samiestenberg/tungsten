@@ -14,6 +14,7 @@
 // text-in/text-ut-ytan som vscode.lm-API:t förväntar sig.
 import * as vscode from "vscode";
 import { createChatProvider, chatBackend } from "./config.js";
+import { AGENT_PAUSED_TEXT, isTrusted } from "./trust.js";
 
 export const FREYA_VENDOR = "freya";
 
@@ -77,6 +78,16 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
       progress,
       token
     ) {
+      // Providern är REGISTRERAD även i en obetrodd mapp -- utan en registrerad
+      // vscode.lm-modell avvisas chat-requesten med "Language model unavailable"
+      // innan den når participanten, och då blir pausbeskedet där osynligt.
+      // Men den SVARAR inte: att skicka innehåll ur en mapp användaren inte
+      // litar på till moln eller Ollama är precis vad grinden ska hindra.
+      if (!isTrusted()) {
+        progress.report(new vscode.LanguageModelTextPart(AGENT_PAUSED_TEXT));
+        return;
+      }
+
       const { provider: model, problem } = await createChatProvider(ctx);
       if (!model) {
         progress.report(

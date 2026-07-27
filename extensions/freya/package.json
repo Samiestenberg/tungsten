@@ -24,8 +24,13 @@
   "capabilities": {
     "virtualWorkspaces": false,
     "untrustedWorkspaces": {
-      "supported": false,
-      "description": "Freya reads and writes files and can run commands in the workspace."
+      "supported": "limited",
+      "description": "The light lane (autocomplete, commit messages, explanations) runs on the embedded local model, only reads, and stays on. The agent writes files and can run commands, so it is paused until you trust the folder.",
+      "restrictedConfigurations": [
+        "freya.local.runtimePath",
+        "freya.local.port",
+        "freya.ollama.url"
+      ]
     }
   },
   "contributes": {

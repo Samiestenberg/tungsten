@@ -20,6 +20,15 @@ import { initLocalServer } from "./localServer.js";
 import { registerExplain } from "./explain.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
+  // ALLT NEDAN REGISTRERAS ÄVEN I EN OBETRODD MAPP. Tillägget deklarerar
+  // untrustedWorkspaces.supported: "limited", så activate() körs direkt när
+  // fönstret öppnas -- tidigare kördes den inte alls, och då startade varken
+  // den inbäddade modellen eller något som kunde förklara varför.
+  //
+  // Grinden sitter i stället per yta: agenten (participant.ts) och
+  // vscode.lm-svaren (languageModel.ts) vägrar tills mappen litas på och SÄGER
+  // det. Den lätta lanen läser bara och kör på.
+
   // Den inbäddade 1.5B-servern startas FÖRST men utan await: allt lätt
   // (autocomplete, commit-meddelanden, förklaringar) ska gå mot den, och den
   // ska vara på väg upp medan resten registreras. Saknas runtime:n faller
@@ -44,6 +53,16 @@ export function activate(ctx: vscode.ExtensionContext): void {
   // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
   // är nere, och läget syns som en statusrad bara när något saknas.
   initHealthState(ctx);
+
+  // Tillägget körs vidare när mappen blir betrodd (supported: "limited"), så
+  // statusraden måste sluta säga "agent paused" av sig själv. Utan detta står
+  // det kvar tills nästa fönster -- och då ser det ut som att knappen inte
+  // gjorde något.
+  ctx.subscriptions.push(
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      void refreshHealth();
+    })
+  );
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand("freya.setKeys", async () => {
