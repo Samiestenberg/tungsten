@@ -49,7 +49,16 @@ export class WorkersAIProvider implements ModelProvider {
     );
 
     if (!res.ok) {
-      throw new Error(`Workers AI ${res.status}: ${await res.text()}`);
+      throw new Error(await describeHttpError(res, this.model));
+    }
+
+    // Streaming utan kropp går inte att läsa. Utan den här kontrollen blir det
+    // ett naket TypeError på res.body!.getReader() längre ner, vilket ser ut
+    // som en krasch i Freya i stället för ett svar som uteblev.
+    if (!res.body) {
+      throw new Error(
+        "Workers AI returned a response without a body. Try again."
+      );
     }
 
     let text = "";
@@ -101,7 +110,7 @@ export class WorkersAIProvider implements ModelProvider {
       } catch {
         content.push({
           type: "text",
-          text: `[trasig tool-input: ${tc.args}]`,
+          text: `[broken tool input: ${tc.args}]`,
         });
         continue;
       }
@@ -115,6 +124,37 @@ export class WorkersAIProvider implements ModelProvider {
 
     return { content };
   }
+}
+
+// Cloudflare svarar på nyckelproblem med en JSON-konvolut som inte säger en
+// användare någonting ("Authentication error"). Just de statuskoder som handlar
+// om ANVÄNDARENS nyckel eller konto får därför en rad som går att agera på.
+// Råsvaret behålls efteråt -- det är det enda som hjälper vid felsökning.
+async function describeHttpError(res: Response, model: string): Promise<string> {
+  // Kroppen kan vara en HTML-felsida från en mellanliggande proxy; kapa den.
+  const body = (await res.text()).slice(0, 500);
+
+  if (res.status === 401 || res.status === 403) {
+    return (
+      `Workers AI rejected the key (HTTP ${res.status}). It is wrong, expired, ` +
+      `or lacks the Workers AI permission. Run **Freya: Set Cloudflare keys** ` +
+      "to enter a new one, or set `freya.chat.backend` to `ollama` to stay " +
+      `local.\n\n${body}`
+    );
+  }
+  if (res.status === 404) {
+    return (
+      "Workers AI could not route the request (HTTP 404). Check the Cloudflare " +
+      `account ID, and that the model \`${model}\` exists.\n\n${body}`
+    );
+  }
+  if (res.status === 429) {
+    return (
+      "Workers AI rate-limited the request (HTTP 429). Wait a moment and try " +
+      `again.\n\n${body}`
+    );
+  }
+  return `Workers AI ${res.status}: ${body}`;
 }
 
 // Läser Server-Sent Events (OpenAI-stilens "data: {...}"-rader, avslutas

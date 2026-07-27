@@ -30,8 +30,10 @@ export async function runAgent(opts: RunOptions) {
 
   for (let step = 0; step < maxSteps; step++) {
     let streamed = false;
+    let streamedText = "";
     const res = await provider.send(messages, TOOL_SCHEMAS, (chunk) => {
       streamed = true;
+      streamedText += chunk;
       emit({ type: "delta", text: chunk });
     });
     messages.push({ role: "assistant", content: res.content });
@@ -46,6 +48,21 @@ export async function runAgent(opts: RunOptions) {
 
       const toolUses = res.content.filter((b: any) => b.type === "tool_use");
       if (toolUses.length === 0) {
+        // En tur utan både text och verktygsanrop avslutade körningen i total
+        // tystnad -- panelen blev tom och det gick inte att skilja från en
+        // krasch. qwen3 hamnar här när hela det synliga svaret var
+        // <think>...</think> och strippern tog bort allt. Säg det i stället.
+        const saidSomething =
+          streamedText.trim() !== "" ||
+          res.content.some(
+            (b: any) => b.type === "text" && b.text?.trim()
+          );
+        if (!saidSomething) {
+          emit({
+            type: "text",
+            text: "The model returned an empty answer. Try again, or rephrase the question.",
+          });
+        }
         emit({ type: "done" });
         return messages;
       }
