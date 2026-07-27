@@ -13,6 +13,8 @@ import {
 import { initHealthState, refreshHealth } from "./healthState.js";
 import { ollamaGuidance, probeOllama } from "./health.js";
 import { registerCommitMessage } from "./commitMessage.js";
+import { registerSecretsGuard } from "./secretsGuard.js";
+import { registerStagedSecretScan } from "./secretsStaged.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
   // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
@@ -21,6 +23,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerParticipant(ctx);
   registerAutocomplete(ctx);
   registerCommitMessage(ctx);
+  registerSecretsGuard(ctx);
+  registerStagedSecretScan(ctx);
 
   // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
   // är nere, och läget syns som en statusrad bara när något saknas.

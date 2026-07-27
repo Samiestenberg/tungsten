@@ -11,6 +11,7 @@ import * as vscode from "vscode";
 import { commitModel, ollamaUrl } from "./config.js";
 import { probeOllama, ollamaGuidance, hasModel } from "./health.js";
 import { pickRepository, type GitRepository } from "./git.js";
+import { confirmStagedIsClean } from "./secretsStaged.js";
 
 // Diffen kan vara enorm. Modellen behöver riktningen, inte varje rad.
 const MAX_DIFF_CHARS = 12_000;
@@ -158,6 +159,13 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
       `Freya: kan inte generera commit-meddelande. ${health.reachable ? `Modellen ${model} saknas — kör: ollama pull ${model}` : `Ollama svarar inte på ${url}.`}`
     );
     console.warn(`[freya] commit-generator: ${guidance}`);
+    return;
+  }
+
+  // Hemlighetskoll på det som ska committas, innan vi ens skriver ett
+  // meddelande åt det. Se secretsStaged.ts om varför blockeringen sitter här
+  // och inte i git-extensionens commit-knapp.
+  if (!(await confirmStagedIsClean(repo, "Skriv meddelande ändå"))) {
     return;
   }
 

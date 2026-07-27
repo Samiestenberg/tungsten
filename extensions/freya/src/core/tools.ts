@@ -53,8 +53,10 @@ function safePath(workdir: string, p: string): string {
   return full;
 }
 
-// Filer som kan innehålla hemligheter — read_file vägrar läsa dessa
-const SECRET_FILE_PATTERN = /(^|[\\/])(\.env(\.|$)|\.dev\.vars$|[^\\/]+\.pem$)/i;
+// Filer som kan innehålla hemligheter — read_file vägrar läsa dessa.
+// Exporterad så att hemlighets-skannern (../secrets.ts) använder SAMMA
+// definition i stället för en egen kopia som glider isär från den här.
+export const SECRET_FILE_PATTERN = /(^|[\\/])(\.env(\.|$)|\.dev\.vars$|[^\\/]+\.pem$)/i;
 
 const READ_FILE_MAX_LINES = 2000;
 const READ_FILE_MAX_CHARS = 60_000;

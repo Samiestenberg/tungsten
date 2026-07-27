@@ -68,6 +68,11 @@
         "title": "Skriv commit-meddelande",
         "category": "Freya",
         "icon": "$(sparkle)"
+      },
+      {
+        "command": "freya.scanStagedForSecrets",
+        "title": "Skanna stagade ändringar för hemligheter",
+        "category": "Freya"
       }
     ],
     "menus": {
@@ -137,6 +142,11 @@
           "type": "string",
           "default": "qwen2.5-coder:14b",
           "description": "Ollama-modell för chatt/agent."
+        },
+        "freya.secrets.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Varna för hemligheter vid inklistring och före commit. Körs helt lokalt (mönstermatchning, ingen modell)."
         },
         "freya.commit.model": {
           "type": "string",

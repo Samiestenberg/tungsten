@@ -26,6 +26,35 @@ Om Ollama inte svarar, eller om en modell saknas, säger Freya det:
 
 Freya installerar aldrig Ollama eller några modeller åt dig.
 
+## Commit-meddelanden
+
+**Freya: Skriv commit-meddelande** (sparkle-knappen i källkontroll-vyn) läser
+`git diff --staged`, skriver ett förslag med den lokala modellen och lägger det
+i commit-fältet. Du redigerar och committar själv — Freya committar aldrig.
+
+## Hemligheter
+
+Skanningen körs helt lokalt: mönstermatchning, ingen modell, inga
+nätverksanrop. Den flaggar privata nyckelblock, AWS-nycklar, GitHub-, Slack-,
+OpenAI-, Anthropic- och Google-tokens, JWT:er samt hemligheter i tilldelningar
+och miljövariabler. Platshållare (`process.env.X`, `<din-nyckel>`,
+`changeme`, `xxxx`) flaggas inte.
+
+- **Vid inklistring:** en modal varning med möjlighet att ångra, innan texten
+  hinner sparas.
+- **Löpande:** träffar syns i Problem-panelen.
+- **Före commit:** commit-generatorn skannar de stagade ändringarna och stoppar
+  om något ser ut som en hemlighet. Kommandot **Freya: Skanna stagade
+  ändringar för hemligheter** gör samma sak när du vill.
+
+Bara tillagda rader skannas — en borttagen hemlighet är en bra sak. `.env`,
+`.dev.vars` och `.pem` varnas det inte i: det är där hemligheter *ska* ligga
+(samma `SECRET_FILE_PATTERN` som `read_file` använder). De skannas däremot i en
+commit, eftersom det är där de gör skada.
+
+Notera: VS Codes git-extension har ingen pre-commit-hook för extensions, så
+Freya kan inte hindra själva Commit-knappen. Den stoppar de flöden den äger.
+
 ## Inställningar
 
 | Inställning | Default | Vad den gör |
@@ -36,6 +65,8 @@ Freya installerar aldrig Ollama eller några modeller åt dig.
 | `freya.autocomplete.model` | `qwen2.5-coder:1.5b-base` | FIM-modell. |
 | `freya.autocomplete.enabled` | `true` | Inline-komplettering av/på. |
 | `freya.chat.maxSteps` | `25` | Högsta antal verktygssteg per fråga. |
+| `freya.commit.model` | tom = `chat.ollamaModel` | Modell för commit-meddelanden. Måste vara en instruct-modell. |
+| `freya.secrets.enabled` | `true` | Hemlighets-varningar av/på. |
 
 ## Molnläget (valfritt)
 
