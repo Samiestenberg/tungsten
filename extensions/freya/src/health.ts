@@ -128,15 +128,58 @@ export function createHealthStatusItem(
   return item;
 }
 
+/** Vad statusraden ska berätta om de två lanerna. */
+export interface LaneStatus {
+  /** Namnet på den lätta lanens modell, eller undefined om den inte är uppe. */
+  lightModel?: string;
+  /** true när den lätta lanen är den inbäddade modellen. */
+  lightIsEmbedded: boolean;
+  /** Tunga lanens backend efter routning. */
+  heavy: "workersai" | "ollama";
+  /** true när molnnycklar finns. */
+  cloudKeys: boolean;
+}
+
+/**
+ * Statusraden visar ARBETSFÖRDELNINGEN, inte bara fel: vilken lätt modell som
+ * svarar och vart det tunga går. Poängen är att en användare ska kunna se att
+ * appen fungerar utan Ollama och utan molnnycklar — inte gissa.
+ */
 export function renderHealthStatus(
   item: vscode.StatusBarItem,
   health: OllamaHealth,
   needed: string[],
-  url: string
+  url: string,
+  lanes?: LaneStatus
 ): void {
+  const heavyText = (l: LaneStatus) =>
+    l.heavy === "workersai"
+      ? l.cloudKeys
+        ? "Workers AI"
+        : "Workers AI (nycklar saknas)"
+      : "Ollama";
+
+  // Lätta lanen kör på den inbäddade modellen: då FUNGERAR appen, oavsett vad
+  // Ollama gör. Ett Ollama-fel får inte se ut som att allt är trasigt.
+  if (lanes?.lightIsEmbedded && lanes.lightModel) {
+    item.text = "$(chip) Freya: 1.5B lokalt";
+    item.tooltip =
+      `Lätt (autocomplete, commit, förklara): inbäddad ${lanes.lightModel}\n` +
+      `Tung (agent/chatt): ${heavyText(lanes)}\n\n` +
+      (health.reachable
+        ? `Ollama svarar på ${url}.`
+        : `Ollama svarar inte på ${url} — behövs inte för det lätta.`) +
+      `\n\nKlicka för att kolla Ollama och modellerna.`;
+    item.backgroundColor = undefined;
+    item.show();
+    return;
+  }
+
   if (!health.reachable) {
     item.text = "$(warning) Freya: Ollama nere";
-    item.tooltip = `Ollama svarar inte på ${url}. Klicka för att kolla igen.`;
+    item.tooltip =
+      `Ollama svarar inte på ${url}. Klicka för att kolla igen.` +
+      (lanes ? `\n\nIngen inbäddad modell hittad, så det lätta ligger också nere.` : "");
     item.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.warningBackground"
     );
@@ -151,6 +194,17 @@ export function renderHealthStatus(
     item.backgroundColor = new vscode.ThemeColor(
       "statusBarItem.warningBackground"
     );
+    item.show();
+    return;
+  }
+
+  // Allt via Ollama och inget saknas: visa vart lanerna pekar, utan varning.
+  if (lanes) {
+    item.text = "$(server) Freya: Ollama";
+    item.tooltip =
+      `Lätt: Ollama (ingen inbäddad modell hittad)\n` +
+      `Tung: ${heavyText(lanes)}`;
+    item.backgroundColor = undefined;
     item.show();
     return;
   }

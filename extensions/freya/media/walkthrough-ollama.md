@@ -1,16 +1,17 @@
-## Ollama
+## Allt lätt kör redan lokalt
 
-Freya kör sina modeller lokalt. Ingenting lämnar maskinen i standardläget.
+Freya har en **inbäddad modell** i appen: Qwen2.5-Coder-1.5B (Apache-2.0), körd
+av llama.cpp-server (MIT) som Tungsten startar själv på `127.0.0.1:11435`.
 
-1. Hämta Ollama: https://ollama.com/download
-2. Starta den:
+Den driver:
 
-```
-ollama serve
-```
+- inline-autocomplete (fill-in-the-middle)
+- commit-meddelanden
+- **Freya: Förklara markerad kod**
 
-Freya letar på `http://localhost:11434`. Kör du Ollama på en annan port eller
-maskin: sätt `freya.ollama.url`.
+Ingen installation, ingen inloggning, ingen nätverkstrafik. Uppmätt
+komplettering: ~270 ms i snitt, 8 av 8 under 600 ms.
 
-Statusraden nere till höger säger till när Ollama inte svarar. Den är tyst när
-allt fungerar.
+Statusraden nere till höger säger vilken modell som svarar. Vill du hellre
+använda din egen Ollama för det lätta: sätt `freya.light.backend` till
+`ollama`.

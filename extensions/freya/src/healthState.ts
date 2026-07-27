@@ -4,7 +4,15 @@
 // inte" utan att importera extension.ts (det hade blivit en cirkel).
 // Modulnivå-state är rimligt här: statusraden är en enda per fönster.
 import * as vscode from "vscode";
-import { autocompleteModel, chatBackend, chatModel, ollamaUrl } from "./config.js";
+import {
+  autocompleteModel,
+  chatBackend,
+  chatModel,
+  hasCloudKeys,
+  lightBackend,
+  ollamaUrl,
+} from "./config.js";
+import { localState } from "./localServer.js";
 import {
   createHealthStatusItem,
   probeOllama,
@@ -17,7 +25,10 @@ let lastRefresh = 0;
 
 /** Modellerna som måste finnas för att det vi faktiskt använder ska fungera. */
 function neededModels(): string[] {
-  const needed = [autocompleteModel()];
+  // Autocomplete-modellen behovs bara i Ollama nar den LATTA lanen gar dit.
+  // Med den inbaddade modellen uppe ar det inget som saknas.
+  const needed =
+    lightBackend() === "embedded" && localState().endpoint ? [] : [autocompleteModel()];
   if (chatBackend() === "ollama") {
     needed.unshift(chatModel());
   }
@@ -33,7 +44,13 @@ export async function refreshHealth(): Promise<void> {
   try {
     const url = ollamaUrl();
     const health = await probeOllama(url);
-    renderHealthStatus(statusItem, health, neededModels(), url);
+    const local = localState();
+    renderHealthStatus(statusItem, health, neededModels(), url, {
+      lightModel: local.endpoint?.modelName,
+      lightIsEmbedded: lightBackend() === "embedded" && !!local.endpoint,
+      heavy: chatBackend(),
+      cloudKeys: hasCloudKeys(),
+    });
   } finally {
     refreshing = false;
   }

@@ -1,15 +1,15 @@
-## Modellerna
+## Tyngre arbete
 
-Två modeller, två olika jobb:
+Agent-arbete över flera filer, stora refaktoreringar och djupt resonemang vill
+ha en större modell än 1.5B. Freya kräver **inte** att du kör en stor modell
+lokalt — den tunga lanen är moln som standard.
 
-```
-ollama pull qwen2.5-coder:14b
-ollama pull qwen2.5-coder:1.5b-base
-```
+| Val | Vad som behövs |
+| --- | --- |
+| Cloudflare Workers AI | Egna nycklar. Kör **Freya: Ange Cloudflare-nycklar** — de sparas i OS-nyckelringen. |
+| Egen Ollama | `ollama pull qwen2.5-coder:14b`. Valfritt tillval för den som har hårdvaran. |
 
-| Modell | Används av | Varför just den |
-| --- | --- | --- |
-| `qwen2.5-coder:14b` | chatt och agent | Stor nog att klara verktygsanrop. |
-| `qwen2.5-coder:1.5b-base` | inline-autocomplete | Liten och snabb. Måste vara en **base**-modell — en instruct-modell kan inte FIM (fill-in-the-middle) och börjar prata i stället för att komplettera. |
+`freya.chat.backend` är `auto`: moln när nycklar finns, annars din Ollama.
 
-Vill du byta modell: `freya.chat.ollamaModel` och `freya.autocomplete.model`.
+Den lätta lanen påverkas inte av det här valet — den ligger kvar på den
+inbäddade modellen och fungerar även utan både nycklar och Ollama.

@@ -9,6 +9,7 @@ import {
   ollamaUrl,
   chatModel,
   autocompleteModel,
+  refreshCloudKeyState,
 } from "./config.js";
 import { initHealthState, refreshHealth } from "./healthState.js";
 import { ollamaGuidance, probeOllama } from "./health.js";
@@ -24,6 +25,11 @@ export function activate(ctx: vscode.ExtensionContext): void {
   // ska vara på väg upp medan resten registreras. Saknas runtime:n faller
   // anroparna tillbaka på Ollama av sig själva.
   initLocalServer(ctx, () => void refreshHealth());
+
+  // Routningen av den TUNGA lanen (auto -> moln om nycklar finns, annars den
+  // valfria Ollama-modellen) behover veta om nycklar finns. chatBackend() ar
+  // synkron, sa svaret cachas har och uppdateras nar nycklarna andras.
+  void refreshCloudKeyState(ctx).then(() => void refreshHealth());
 
   // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
   // chat-request med "Language model unavailable" innan Freyas handler nås.
@@ -44,6 +50,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
       await clearKeys(ctx);
       const ok = await promptAndStoreKeys(ctx);
       if (ok) {
+        await refreshCloudKeyState(ctx);
+        void refreshHealth();
         vscode.window.showInformationMessage(
           "Freya: Cloudflare-nycklar sparade i OS-nyckelringen."
         );
@@ -51,6 +59,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("freya.clearKeys", async () => {
       await clearKeys(ctx);
+      await refreshCloudKeyState(ctx);
+      void refreshHealth();
       vscode.window.showInformationMessage("Freya: nycklar raderade.");
     }),
     vscode.commands.registerCommand("freya.checkOllama", async () => {

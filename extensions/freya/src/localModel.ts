@@ -9,6 +9,16 @@
 //   kodförklaring    ~810 ms    ("Returnerar summan av alla tal i listan.")
 // Det räcker för allt som ska kännas gratis och köra ofta.
 import { localEndpoint } from "./localServer.js";
+import { lightBackend } from "./config.js";
+
+/**
+ * Endpointen till den inbäddade modellen, eller undefined när den lätta lanen
+ * är satt till Ollama. Ett enda ställe att gå igenom, så routningsvalet gäller
+ * autocomplete, commit-rubriker och förklaringar samtidigt.
+ */
+async function activeLocalEndpoint() {
+  return lightBackend() === "ollama" ? undefined : localEndpoint();
+}
 
 export interface CompleteOptions {
   /** Stoppsekvenser. En base-modell slutar inte av sig själv. */
@@ -20,7 +30,7 @@ export interface CompleteOptions {
 
 /** true om den inbäddade modellen är uppe och kan ta emot anrop. */
 export async function localAvailable(): Promise<boolean> {
-  return (await localEndpoint()) !== undefined;
+  return (await activeLocalEndpoint()) !== undefined;
 }
 
 /**
@@ -34,7 +44,7 @@ export async function localInfill(
   suffix: string,
   opts: CompleteOptions = {}
 ): Promise<string | undefined> {
-  const ep = await localEndpoint();
+  const ep = await activeLocalEndpoint();
   if (!ep) return undefined;
 
   const res = await fetch(`${ep.baseUrl}/infill`, {
@@ -69,7 +79,7 @@ export async function localComplete(
   prompt: string,
   opts: CompleteOptions = {}
 ): Promise<string | undefined> {
-  const ep = await localEndpoint();
+  const ep = await activeLocalEndpoint();
   if (!ep) return undefined;
 
   const res = await fetch(`${ep.baseUrl}/v1/completions`, {

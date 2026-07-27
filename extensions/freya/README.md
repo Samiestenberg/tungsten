@@ -2,14 +2,40 @@
 
 Tungstens inbyggda kodagent. Local-first, BYOK, ingen telemetri.
 
-## Vad du behöver
+## Arbetsfördelningen
 
-Freya kör mot en **lokal Ollama**. Det är default och det som är verifierat.
+Freya har **två laner**, och det är hela designen:
+
+| | Lätt lane | Tung lane |
+| --- | --- | --- |
+| Vad | autocomplete, commit-meddelanden, kodförklaringar | agent över flera filer, stora refaktoreringar, djupt resonemang |
+| Modell | **inbäddad** Qwen2.5-Coder-1.5B, körd av llama.cpp i appen | Cloudflare Workers AI (qwen3) eller egen Ollama |
+| Krav | inget — följer med appen | egna nycklar, eller en stor modell du själv hämtat |
+| Kostnad | noll, offline | moln, eller din egen hårdvara |
+| Inställning | `freya.light.backend` (default `embedded`) | `freya.chat.backend` (default `auto`) |
+
+Det betyder att appen **fungerar direkt vid nedladdning**: utan Ollama och utan
+moln-nycklar får du ändå autocomplete, commit-meddelanden och förklaringar.
+En stor lokal modell är ett **tillval**, aldrig ett krav.
+
+`freya.chat.backend: auto` väljer moln när Cloudflare-nycklar finns och annars
+din lokala Ollama. Statusraden nere till höger visar vilken modell som svarar
+i respektive lane.
+
+### Den inbäddade modellen
+
+Startas som barnprocess på `127.0.0.1:11435` (aldrig 11434 — den är Ollamas)
+och stängs när Tungsten stängs. Uppmätt: ~270 ms per komplettering, 8 av 8
+under 600 ms.
+
+Licenser: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0. Se
+`freya-runtime/THIRD-PARTY-NOTICES.txt` i appens resurser.
+
+### Den valfria Ollama-vägen
 
 ```
-ollama serve
-ollama pull qwen2.5-coder:14b
-ollama pull qwen2.5-coder:1.5b-base
+ollama pull qwen2.5-coder:14b        # tung lane, tillval
+ollama pull qwen2.5-coder:1.5b-base  # bara om du sätter light.backend=ollama
 ```
 
 | Modell | Yta | Krav |
@@ -17,14 +43,9 @@ ollama pull qwen2.5-coder:1.5b-base
 | `qwen2.5-coder:14b` | chatt / agent | Behöver klara verktygsanrop. |
 | `qwen2.5-coder:1.5b-base` | inline-autocomplete | Måste vara en **base**-modell. En instruct-modell klarar inte FIM och svarar med prosa i stället för kod. |
 
-Om Ollama inte svarar, eller om en modell saknas, säger Freya det:
-
-- **i chattpanelen** — en rad med exakt vilket `ollama pull` som behövs, i
-  stället för tystnad,
-- **i statusraden** nere till höger, som bara syns när något är fel,
-- via kommandot **Freya: Kolla att Ollama och modellerna finns**.
-
-Freya installerar aldrig Ollama eller några modeller åt dig.
+Behövs Ollama men svarar inte, säger Freya det i chattpanelen med exakt vilket
+`ollama pull` som krävs, i statusraden, och via **Freya: Kolla att Ollama och
+modellerna finns**. Freya installerar aldrig Ollama eller några modeller åt dig.
 
 ## Commit-meddelanden
 
@@ -59,7 +80,10 @@ Freya kan inte hindra själva Commit-knappen. Den stoppar de flöden den äger.
 
 | Inställning | Default | Vad den gör |
 | --- | --- | --- |
-| `freya.chat.backend` | `ollama` | `ollama` (lokalt) eller `workersai` (moln, BYOK). |
+| `freya.chat.backend` | `auto` | TUNG lane: `auto` (moln om nycklar, annars Ollama), `workersai` eller `ollama`. |
+| `freya.light.backend` | `embedded` | LÄTT lane: `embedded` (inbäddad 1.5B) eller `ollama`. |
+| `freya.local.enabled` | `true` | Använd den inbäddade modellen alls. |
+| `freya.local.port` | `11435` | Port för den inbäddade servern. Aldrig 11434. |
 | `freya.ollama.url` | `http://localhost:11434` | Används av både chatt och autocomplete. |
 | `freya.chat.ollamaModel` | `qwen2.5-coder:14b` | Chattmodell i Ollama. |
 | `freya.autocomplete.model` | `qwen2.5-coder:1.5b-base` | FIM-modell. |

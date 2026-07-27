@@ -93,11 +93,11 @@
       {
         "id": "freya.setup",
         "title": "Kom igång med Freya",
-        "description": "Freya kör lokalt via Ollama. Två modeller behövs.",
+        "description": "Freya har en egen lokal modell inbyggd. Inget att installera.",
         "steps": [
           {
             "id": "freya.setup.ollama",
-            "title": "Installera och starta Ollama",
+            "title": "Allt lätt kör redan lokalt",
             "description": "Freya pratar med en Ollama på http://localhost:11434. Hämta den från https://ollama.com/download och kör `ollama serve`.\n[Kolla om Ollama svarar](command:freya.checkOllama)",
             "media": {
               "markdown": "media/walkthrough-ollama.md"
@@ -105,7 +105,7 @@
           },
           {
             "id": "freya.setup.models",
-            "title": "Hämta de två modellerna",
+            "title": "Tyngre arbete: moln eller egen stor modell",
             "description": "Chatt/agent använder qwen2.5-coder:14b, autocomplete en liten FIM-modell.\n```\nollama pull qwen2.5-coder:14b\nollama pull qwen2.5-coder:1.5b-base\n```\n[Kolla att modellerna finns](command:freya.checkOllama)",
             "media": {
               "markdown": "media/walkthrough-models.md"
@@ -128,15 +128,30 @@
         "freya.chat.backend": {
           "type": "string",
           "enum": [
+            "auto",
             "workersai",
             "ollama"
           ],
           "enumDescriptions": [
+            "Välj själv: moln om Cloudflare-nycklar finns, annars din lokala Ollama.",
             "Cloudflare Workers AI. Kräver egna nycklar (BYOK).",
-            "Lokal Ollama. Fungerar offline."
+            "Lokal Ollama. Valfritt tillval, kräver att du hämtat en stor modell."
           ],
-          "default": "ollama",
-          "description": "Vilken modell Freyas chatt/agent använder."
+          "default": "auto",
+          "description": "TUNG lane: vilken modell Freyas chatt/agent använder. Den lätta lanen styrs av freya.light.backend."
+        },
+        "freya.light.backend": {
+          "type": "string",
+          "enum": [
+            "embedded",
+            "ollama"
+          ],
+          "enumDescriptions": [
+            "Den inbäddade 1.5B-modellen som följer med appen. Kräver ingen installation.",
+            "Din egen Ollama. Använd om du hellre kör en annan liten modell."
+          ],
+          "default": "embedded",
+          "description": "LÄTT lane: autocomplete, commit-rubriker och kodförklaringar."
         },
         "freya.chat.workersAiModel": {
           "type": "string",

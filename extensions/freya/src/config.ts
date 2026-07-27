@@ -19,8 +19,63 @@ function cfg() {
   return vscode.workspace.getConfiguration("freya");
 }
 
+/**
+ * ARBETSFÖRDELNINGEN, i kod.
+ *
+ * Lätt lane (autocomplete, commit-rubriker, förklaringar) = den INBÄDDADE
+ * 1.5B:n. Den följer med appen, kräver ingen installation och kostar noll, så
+ * den är default och nästan alltid tillgänglig.
+ *
+ * Tung lane (agent-loopen, flera filer, djupt resonemang) = moln. Ingen tung
+ * LOKAL modell krävs; en lokal 14B via Ollama är ett tillval för den som har
+ * hårdvaran.
+ */
+export type LightBackend = "embedded" | "ollama";
+export type ChatBackendSetting = Backend | "auto";
+
+export function lightBackend(): LightBackend {
+  return cfg().get<LightBackend>("light.backend") ?? "embedded";
+}
+
+/**
+ * Cachead ögonblicksbild av "finns molnnycklar?".
+ *
+ * chatBackend() MÅSTE vara synkron: den anropas från participant.ts, som inte
+ * ska behöva ändras för att routningen blev smartare. Nycklarna bor i
+ * SecretStorage och läses asynkront, så svaret cachas här och uppdateras vid
+ * uppstart och när nycklarna ändras.
+ */
+let cloudKeysAvailable = false;
+
+export async function refreshCloudKeyState(
+  ctx: vscode.ExtensionContext
+): Promise<boolean> {
+  const env = await envFromWorkspace();
+  const accountId = await resolveSecret(ctx, SECRET_ACCOUNT_ID, "CLOUDFLARE_ACCOUNT_ID", env);
+  const apiToken = await resolveSecret(ctx, SECRET_API_TOKEN, "CLOUDFLARE_API_TOKEN", env);
+  cloudKeysAvailable = !!accountId && !!apiToken;
+  return cloudKeysAvailable;
+}
+
+export function hasCloudKeys(): boolean {
+  return cloudKeysAvailable;
+}
+
+export function chatBackendSetting(): ChatBackendSetting {
+  return cfg().get<ChatBackendSetting>("chat.backend") ?? "auto";
+}
+
+/**
+ * Vilken TUNG backend som gäller nu. "auto" väljer moln när nycklar finns och
+ * annars den valfria lokala Ollama-modellen — så appen pekar på något som
+ * faktiskt kan svara i stället för att kräva ett val av användaren.
+ */
 export function chatBackend(): Backend {
-  return cfg().get<Backend>("chat.backend") ?? "ollama";
+  const setting = chatBackendSetting();
+  if (setting === "workersai" || setting === "ollama") {
+    return setting;
+  }
+  return cloudKeysAvailable ? "workersai" : "ollama";
 }
 
 export function ollamaUrl(): string {
