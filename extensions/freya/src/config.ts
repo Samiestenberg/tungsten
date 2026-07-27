@@ -37,6 +37,16 @@ export function autocompleteModel(): string {
   return cfg().get<string>("autocomplete.model") || "qwen2.5-coder:1.5b-base";
 }
 
+/**
+ * Modellen som skriver commit-meddelanden. Alltid Ollama, aldrig molnet.
+ * Default är samma modell som chatten: att skriva ett commit-meddelande är att
+ * följa en instruktion, och FIM-modellen i autocomplete är en base-modell som
+ * inte kan det -- den skulle fortsätta diffen i stället för att sammanfatta den.
+ */
+export function commitModel(): string {
+  return cfg().get<string>("commit.model") || chatModel();
+}
+
 export function workspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }

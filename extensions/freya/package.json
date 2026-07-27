@@ -62,8 +62,23 @@
         "command": "freya.checkOllama",
         "title": "Kolla att Ollama och modellerna finns",
         "category": "Freya"
+      },
+      {
+        "command": "freya.generateCommitMessage",
+        "title": "Skriv commit-meddelande",
+        "category": "Freya",
+        "icon": "$(sparkle)"
       }
     ],
+    "menus": {
+      "scm/title": [
+        {
+          "command": "freya.generateCommitMessage",
+          "when": "scmProvider == git",
+          "group": "navigation"
+        }
+      ]
+    },
     "walkthroughs": [
       {
         "id": "freya.setup",
@@ -122,6 +137,11 @@
           "type": "string",
           "default": "qwen2.5-coder:14b",
           "description": "Ollama-modell för chatt/agent."
+        },
+        "freya.commit.model": {
+          "type": "string",
+          "default": "",
+          "description": "Ollama-modell som skriver commit-meddelanden. Tomt = samma som freya.chat.ollamaModel. Måste vara en instruct-modell, inte en base-modell."
         },
         "freya.chat.maxSteps": {
           "type": "number",
