@@ -418,6 +418,23 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			sources,
 			deps
 		];
+
+		// Freyas inbäddade lokala modell: llama-server-binären för DEN HÄR
+		// plattformen plus GGUF:en, in i resources/app/freya-runtime/.
+		// Hämtas av `node --experimental-strip-types build/freya/fetchLocalRuntime.ts`
+		// till en gitignore:ad mapp, så den kan mycket väl saknas: då hoppas den
+		// här strömmen över helt och appen faller tillbaka på Ollama. Modellen
+		// tas bara med när plattformens binär finns — annars hade vi shippat
+		// 940 MB vikter utan något som kan köra dem.
+		const freyaRuntimeBinDir = path.join(root, 'resources', 'freya-runtime', `${platform}-${arch}`);
+		if (fs.existsSync(freyaRuntimeBinDir)) {
+			mergeStreams.push(gulp.src([
+				`resources/freya-runtime/${platform}-${arch}/**`,
+				'resources/freya-runtime/model/**',
+				'resources/freya-runtime/THIRD-PARTY-NOTICES.txt'
+			], { base: 'resources', dot: true, allowEmpty: true }));
+		}
+
 		let all = es.merge(...mergeStreams);
 
 		if (platform === 'win32') {
