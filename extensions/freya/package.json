@@ -73,6 +73,11 @@
         "command": "freya.scanStagedForSecrets",
         "title": "Skanna stagade ändringar för hemligheter",
         "category": "Freya"
+      },
+      {
+        "command": "freya.explainSelection",
+        "title": "Förklara markerad kod",
+        "category": "Freya"
       }
     ],
     "menus": {

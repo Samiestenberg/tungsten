@@ -4,6 +4,7 @@
 // offline, så den går alltid mot Ollama på maskinen.
 import * as vscode from "vscode";
 import { reportAutocompleteOutage } from "./healthState.js";
+import { localInfill } from "./localModel.js";
 
 function cfg() {
   return vscode.workspace.getConfiguration("freya");
@@ -27,6 +28,15 @@ function debounce(ms: number, token: vscode.CancellationToken): Promise<boolean>
   });
 }
 
+/**
+ * Tak för inline-förslag från den inbäddade modellen. Se fimLocal.
+ *
+ * Talet kommer ur mätning, inte magkänsla: 1.5B:n genererar ~40 tokens/s på
+ * CPU, så 24 tokens är ~600 ms generering plus prompt-eval. Högre tak gav
+ * 1-2,8 s och förslag som fortsatte förbi det man ville ha.
+ */
+const INLINE_TOKEN_CAP = 24;
+
 const FIM_STOP = [
   "<|fim_pad|>",
   "<|endoftext|>",
@@ -36,6 +46,37 @@ const FIM_STOP = [
   "<|file_sep|>",
   "<|repo_name|>",
 ];
+
+/**
+ * FIM mot den INBÄDDADE modellen först. Den finns i det packade bygget och
+ * behöver ingenting installerat, så den är standardvägen. Går den inte att nå
+ * (dev-träd utan runtime, eller freya.local.enabled=false) faller vi tillbaka
+ * på användarens egen Ollama nedan.
+ */
+async function fimLocal(
+  prefix: string,
+  suffix: string,
+  signal: AbortSignal
+): Promise<string | undefined> {
+  // Latensen följer antalet genererade tokens, inte modellstorleken. Med
+  // n_predict 256 och inget radstopp fortsatte 1.5B:n förbi kompletteringen och
+  // hittade på fler metoder: uppmätt 2264 ms och ett förslag ingen ville ha.
+  //
+  // Ett tomrads-stopp ("\n\n") hjälpte inte — modellen skriver rad efter rad
+  // utan tomrader, så den gick till taket ändå. EN rad är rätt enhet för
+  // inline-förslag, så vi stoppar på "\n".
+  //
+  // Taket är ett tak, inte en ny default: den som höjer autocomplete.maxTokens
+  // får fortfarande längre förslag på Ollama-vägen.
+  const configured = cfg().get<number>("autocomplete.maxTokens") ?? 256;
+  const out = await localInfill(prefix, suffix, {
+    maxTokens: Math.min(configured, INLINE_TOKEN_CAP),
+    temperature: 0.1,
+    stop: [...FIM_STOP, "\n"],
+    signal,
+  });
+  return out === undefined ? undefined : out.replace(/<\|[^|]*\|>/g, "");
+}
 
 async function fim(
   prefix: string,
@@ -96,7 +137,9 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
 
       let completion = "";
       try {
-        completion = await fim(prefix, suffix, ac.signal);
+        // Inbäddad modell först, Ollama som reserv.
+        const local = await fimLocal(prefix, suffix, ac.signal);
+        completion = local !== undefined ? local : await fim(prefix, suffix, ac.signal);
       } catch (err: any) {
         // Föreslå inget — men var inte tyst OM det inte var användaren som
         // avbröt. Ett nere Ollama såg tidigare exakt ut som "modellen hade

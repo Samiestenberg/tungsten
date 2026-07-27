@@ -12,6 +12,7 @@ import { commitModel, ollamaUrl } from "./config.js";
 import { probeOllama, ollamaGuidance, hasModel } from "./health.js";
 import { pickRepository, type GitRepository } from "./git.js";
 import { confirmStagedIsClean } from "./secretsStaged.js";
+import { localAvailable, localComplete } from "./localModel.js";
 
 // Diffen kan vara enorm. Modellen behöver riktningen, inte varje rad.
 const MAX_DIFF_CHARS = 12_000;
@@ -90,6 +91,56 @@ export function cleanMessage(raw: string): string {
   return lines.join("\n").trim();
 }
 
+/**
+ * Few-shot-prompt för den INBÄDDADE base-modellen. En base-modell följer inte
+ * instruktioner — den fortsätter mönstret den ser, så budskapet "kort, imperativ
+ * svensk rubrik" måste demonstreras i stället för beskrivas. Exemplen är korta
+ * med flit: de sätter längden lika mycket som de sätter formen.
+ */
+function fewShotCommitPrompt(diff: string): string {
+  return [
+    "# Skriv en kort commit-rubrik pa svenska for varje diff.",
+    "",
+    "## Diff",
+    "+function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }",
+    "## Rubrik",
+    "lagg till clamp-hjalpfunktion",
+    "",
+    "## Diff",
+    "-const PORT = 3000;",
+    "+const PORT = Number(process.env.PORT ?? 3000);",
+    "## Rubrik",
+    "las porten fran miljovariabel",
+    "",
+    "## Diff",
+    truncateDiff(diff),
+    "## Rubrik",
+    "",
+  ].join("\n");
+}
+
+/** Inbäddad modell först. undefined = ingen lokal modell, kör Ollama i stället. */
+async function generateLocal(
+  diff: string,
+  token: vscode.CancellationToken
+): Promise<string | undefined> {
+  const ac = new AbortController();
+  const sub = token.onCancellationRequested(() => ac.abort());
+  try {
+    const out = await localComplete(fewShotCommitPrompt(diff), {
+      // Rubriken är en rad. Stoppa på radbrytning och på nästa exempel-rubrik,
+      // annars fortsätter base-modellen att hitta på fler diffar.
+      stop: ["\n", "## "],
+      maxTokens: 32,
+      temperature: 0.2,
+      signal: ac.signal,
+    });
+    return out === undefined ? undefined : cleanMessage(out);
+  } finally {
+    sub.dispose();
+  }
+}
+
 async function generate(
   diff: string,
   model: string,
@@ -149,17 +200,23 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
     return;
   }
 
-  const url = ollamaUrl();
-  const model = commitModel();
-  const health = await probeOllama(url);
-  if (!health.reachable || !hasModel(health, model)) {
-    // Samma vägledning som chattpanelen ger, men här som notifiering.
-    const guidance = ollamaGuidance(health, [model], url);
-    vscode.window.showWarningMessage(
-      `Freya: kan inte generera commit-meddelande. ${health.reachable ? `Modellen ${model} saknas — kör: ollama pull ${model}` : `Ollama svarar inte på ${url}.`}`
-    );
-    console.warn(`[freya] commit-generator: ${guidance}`);
-    return;
+  // Den inbäddade modellen är förstahandsvalet och kräver ingen installation.
+  // Ollama-kravet gäller BARA när den inte finns — annars hade en ren maskin
+  // utan Ollama fått "Ollama svarar inte" trots att allt behövdes finns i appen.
+  const useLocal = await localAvailable();
+  if (!useLocal) {
+    const url = ollamaUrl();
+    const model = commitModel();
+    const health = await probeOllama(url);
+    if (!health.reachable || !hasModel(health, model)) {
+      // Samma vägledning som chattpanelen ger, men här som notifiering.
+      const guidance = ollamaGuidance(health, [model], url);
+      vscode.window.showWarningMessage(
+        `Freya: kan inte generera commit-meddelande. ${health.reachable ? `Modellen ${model} saknas — kör: ollama pull ${model}` : `Ollama svarar inte på ${url}.`}`
+      );
+      console.warn(`[freya] commit-generator: ${guidance}`);
+      return;
+    }
   }
 
   // Hemlighetskoll på det som ska committas, innan vi ens skriver ett
@@ -175,7 +232,12 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
       title: "Freya skriver commit-meddelande...",
       cancellable: true,
     },
-    (_progress, token) => generate(diff, model, url, token)
+    async (_progress, token) => {
+      const local = await generateLocal(diff, token);
+      return local !== undefined
+        ? local
+        : generate(diff, commitModel(), ollamaUrl(), token);
+    }
   );
 
   if (!message) {

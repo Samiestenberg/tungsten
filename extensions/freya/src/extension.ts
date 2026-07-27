@@ -16,6 +16,7 @@ import { registerCommitMessage } from "./commitMessage.js";
 import { registerSecretsGuard } from "./secretsGuard.js";
 import { registerStagedSecretScan } from "./secretsStaged.js";
 import { initLocalServer } from "./localServer.js";
+import { registerExplain } from "./explain.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
   // Den inbäddade 1.5B-servern startas FÖRST men utan await: allt lätt
@@ -32,6 +33,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerCommitMessage(ctx);
   registerSecretsGuard(ctx);
   registerStagedSecretScan(ctx);
+  registerExplain(ctx);
 
   // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
   // är nere, och läget syns som en statusrad bara när något saknas.
