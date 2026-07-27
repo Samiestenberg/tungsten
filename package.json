@@ -1,9 +1,9 @@
 {
-  "name": "code-oss-dev",
+  "name": "tungsten",
   "version": "1.131.0",
   "distro": "d0fd3324a737f695bd14f2aee3ca92accd28870f",
   "author": {
-    "name": "Microsoft Corporation"
+    "name": "Tungsten"
   },
   "license": "MIT",
   "main": "./out/main.js",
