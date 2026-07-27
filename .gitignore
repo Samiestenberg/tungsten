@@ -50,3 +50,8 @@ dist
 .github/prompts/*.local.prompt.md
 .agents/skills/.local/
 .github/skills/.local/
+
+# Freyas inbaddade lokala runtime (llama-server + ~1 GB GGUF).
+# Hamtas med: node --experimental-strip-types build/freya/fetchLocalRuntime.ts
+# Vikter och binarer hor inte i git-historiken.
+/resources/freya-runtime/

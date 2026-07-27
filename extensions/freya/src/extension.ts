@@ -15,8 +15,15 @@ import { ollamaGuidance, probeOllama } from "./health.js";
 import { registerCommitMessage } from "./commitMessage.js";
 import { registerSecretsGuard } from "./secretsGuard.js";
 import { registerStagedSecretScan } from "./secretsStaged.js";
+import { initLocalServer } from "./localServer.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
+  // Den inbäddade 1.5B-servern startas FÖRST men utan await: allt lätt
+  // (autocomplete, commit-meddelanden, förklaringar) ska gå mot den, och den
+  // ska vara på väg upp medan resten registreras. Saknas runtime:n faller
+  // anroparna tillbaka på Ollama av sig själva.
+  initLocalServer(ctx, () => void refreshHealth());
+
   // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
   // chat-request med "Language model unavailable" innan Freyas handler nås.
   registerLanguageModel(ctx);

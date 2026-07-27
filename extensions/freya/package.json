@@ -143,6 +143,26 @@
           "default": "qwen2.5-coder:14b",
           "description": "Ollama-modell för chatt/agent."
         },
+        "freya.local.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Använd den inbäddade lokala modellen (llama.cpp + Qwen2.5-Coder-1.5B) för de lätta uppgifterna. Av = fall tillbaka på Ollama."
+        },
+        "freya.local.port": {
+          "type": "number",
+          "default": 11435,
+          "description": "Port för den inbäddade llama.cpp-servern. 11434 är Ollamas och används aldrig."
+        },
+        "freya.local.contextSize": {
+          "type": "number",
+          "default": 4096,
+          "description": "Kontextfönster för den inbäddade modellen."
+        },
+        "freya.local.runtimePath": {
+          "type": "string",
+          "default": "",
+          "description": "Egen sökväg till freya-runtime-mappen. Tomt = leta i appens resurser."
+        },
         "freya.secrets.enabled": {
           "type": "boolean",
           "default": true,
