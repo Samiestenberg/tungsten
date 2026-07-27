@@ -16,7 +16,8 @@
 //    modulglobal. Flera sessioner samtidigt ska inte blandas.
 import * as vscode from "vscode";
 import { runAgent } from "./core/agent.js";
-import { createChatProvider, workspaceRoot } from "./config.js";
+import { createChatProvider, workspaceRoot, chatBackend, ollamaUrl, chatModel } from "./config.js";
+import { ollamaGuidance, probeOllama } from "./health.js";
 
 export const FREYA_ID = "tungsten.freya";
 
@@ -71,6 +72,19 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
           "Öppna en mapp först — Freya arbetar med filer och behöver en projektrot."
         );
         return {};
+      }
+
+      // Hälsokoll INNAN vi försöker prata med modellen. Utan den fick
+      // användaren antingen tystnad eller ett raw fetch-fel när Ollama inte
+      // körde; nu blir det en rad i panelen med exakt kommandot som fixar det.
+      if (chatBackend() === "ollama") {
+        const url = ollamaUrl();
+        const health = await probeOllama(url);
+        const guidance = ollamaGuidance(health, [chatModel()], url);
+        if (guidance) {
+          response.markdown(guidance);
+          return { errorDetails: { message: "Freya: Ollama är inte redo" } };
+        }
       }
 
       const { provider, problem, label } = await createChatProvider(ctx);

@@ -2,7 +2,16 @@ import * as vscode from "vscode";
 import { registerParticipant } from "./participant.js";
 import { registerLanguageModel } from "./languageModel.js";
 import { registerAutocomplete } from "./autocomplete.js";
-import { clearKeys, promptAndStoreKeys, chatBackend } from "./config.js";
+import {
+  clearKeys,
+  promptAndStoreKeys,
+  chatBackend,
+  ollamaUrl,
+  chatModel,
+  autocompleteModel,
+} from "./config.js";
+import { initHealthState, refreshHealth } from "./healthState.js";
+import { ollamaGuidance, probeOllama } from "./health.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
   // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
@@ -10,6 +19,10 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerLanguageModel(ctx);
   registerParticipant(ctx);
   registerAutocomplete(ctx);
+
+  // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
+  // är nere, och läget syns som en statusrad bara när något saknas.
+  initHealthState(ctx);
 
   ctx.subscriptions.push(
     vscode.commands.registerCommand("freya.setKeys", async () => {
@@ -24,6 +37,35 @@ export function activate(ctx: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("freya.clearKeys", async () => {
       await clearKeys(ctx);
       vscode.window.showInformationMessage("Freya: nycklar raderade.");
+    }),
+    vscode.commands.registerCommand("freya.checkOllama", async () => {
+      const url = ollamaUrl();
+      const needed =
+        chatBackend() === "ollama"
+          ? [chatModel(), autocompleteModel()]
+          : [autocompleteModel()];
+      const health = await probeOllama(url);
+      await refreshHealth();
+      const guidance = ollamaGuidance(health, [...new Set(needed)], url);
+      if (!guidance) {
+        vscode.window.showInformationMessage(
+          `Freya: Ollama svarar på ${url} och alla modeller finns.`
+        );
+        return;
+      }
+      // Panelen är rätt yta för instruktioner (markdown, kopierbar kodrad).
+      // Notifieringen är bara vägvisaren dit.
+      const open = await vscode.window.showWarningMessage(
+        health.reachable
+          ? "Freya: en Ollama-modell saknas."
+          : `Freya: Ollama svarar inte på ${url}.`,
+        "Visa i chatten"
+      );
+      if (open === "Visa i chatten") {
+        await vscode.commands.executeCommand("workbench.action.chat.open", {
+          query: "@freya hej",
+        });
+      }
     }),
     vscode.commands.registerCommand("freya.showBackend", () => {
       const backend = chatBackend();

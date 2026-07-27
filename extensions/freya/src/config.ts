@@ -20,7 +20,21 @@ function cfg() {
 }
 
 export function chatBackend(): Backend {
-  return cfg().get<Backend>("chat.backend") ?? "workersai";
+  return cfg().get<Backend>("chat.backend") ?? "ollama";
+}
+
+export function ollamaUrl(): string {
+  return cfg().get<string>("ollama.url") || "http://localhost:11434";
+}
+
+/** Ollama-modellen som chatt/agent använder. */
+export function chatModel(): string {
+  return cfg().get<string>("chat.ollamaModel") || "qwen2.5-coder:14b";
+}
+
+/** FIM-modellen som autocomplete använder. Alltid lokal. */
+export function autocompleteModel(): string {
+  return cfg().get<string>("autocomplete.model") || "qwen2.5-coder:1.5b-base";
 }
 
 export function workspaceRoot(): string | undefined {
@@ -87,8 +101,8 @@ export async function createChatProvider(
   const backend = chatBackend();
 
   if (backend === "ollama") {
-    const url = cfg().get<string>("ollama.url") || "http://localhost:11434";
-    const model = cfg().get<string>("chat.ollamaModel") || "qwen2.5-coder:14b";
+    const url = ollamaUrl();
+    const model = chatModel();
     return {
       provider: new OllamaProvider(url, model),
       label: `Ollama · ${model}`,

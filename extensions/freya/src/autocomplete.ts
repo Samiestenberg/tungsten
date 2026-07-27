@@ -3,6 +3,7 @@
 // AI om användaren vill; komplettering ska vara gratis, snabb och fungera
 // offline, så den går alltid mot Ollama på maskinen.
 import * as vscode from "vscode";
+import { reportAutocompleteOutage } from "./healthState.js";
 
 function cfg() {
   return vscode.workspace.getConfiguration("freya");
@@ -96,8 +97,14 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
       let completion = "";
       try {
         completion = await fim(prefix, suffix, ac.signal);
-      } catch {
-        return; // avbruten, eller Ollama nere — var tyst, föreslå inget
+      } catch (err: any) {
+        // Föreslå inget — men var inte tyst OM det inte var användaren som
+        // avbröt. Ett nere Ollama såg tidigare exakt ut som "modellen hade
+        // inget att föreslå", vilket är det som gjorde felet osynligt.
+        if (!token.isCancellationRequested && err?.name !== "AbortError") {
+          reportAutocompleteOutage();
+        }
+        return;
       } finally {
         sub.dispose();
       }
