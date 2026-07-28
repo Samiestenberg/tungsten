@@ -1,93 +1,49 @@
-// Freya inline-autocomplete: liten LOKAL FIM-modell (1.5B, port 11435).
+// Freya inline-autocomplete: den lilla LOKALA FIM-modellen (1.5B, port 11435).
+//
 // Egen lane, medvetet skild från chatten. Komplettering ska vara gratis,
 // snabb och fungera offline, så den går alltid mot en modell på maskinen --
 // den inbäddade i första hand, användarens egen Ollama som reserv.
+//
+// EN PROVIDER, FLERA BETEENDEN. Vad markören står i avgör tokenbudget och
+// stopp, inte vilken kodväg som körs:
+//
+//   rad     nästa uttryck på raden              24 tokens, stopp "\n"
+//   block   resten av kroppen efter { eller :   96 tokens, flera rader
+//
+// Klassificeringen ligger i fim/fimTrigger.ts som en ren funktion. Skälet är
+// att en provider per beteende hade betytt flera anrop per tangenttryck och
+// flera förslag som slåss om samma yta.
 import * as vscode from "vscode";
 import { reportAutocompleteOutage } from "./healthState.js";
-import { localInfill } from "./localModel.js";
+import {
+  cleanFimOutput,
+  debounce,
+  FIM_STOP,
+  fimContext,
+  isEditableDocument,
+  runFim,
+} from "./fim/fimCore.js";
+import { classifyFimTrigger, trimToBlock } from "./fim/fimTrigger.js";
 import { recordCompletionShown } from "./fim/nextEdit.js";
 
 function cfg() {
   return vscode.workspace.getConfiguration("freya");
 }
 
-// Väntar ms millisekunder men ger upp direkt om VS Code avbryter.
-// VS Code avbryter föregående inline-request när användaren skriver vidare,
-// så det ÄR debouncen — ingen delad timer behövs (en sådan skulle dessutom
-// lämna tidigare anrops promise ohanterad).
-function debounce(ms: number, token: vscode.CancellationToken): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    const timer = setTimeout(() => {
-      sub.dispose();
-      resolve(true);
-    }, ms);
-    const sub = token.onCancellationRequested(() => {
-      clearTimeout(timer);
-      sub.dispose();
-      resolve(false);
-    });
-  });
-}
-
 /**
- * Tak för inline-förslag från den inbäddade modellen. Se fimLocal.
- *
- * Talet kommer ur mätning, inte magkänsla: 1.5B:n genererar ~40 tokens/s på
- * CPU, så 24 tokens är ~600 ms generering plus prompt-eval. Högre tak gav
- * 1-2,8 s och förslag som fortsatte förbi det man ville ha.
+ * FIM mot användarens egen Ollama. Reserv för dev-träd utan inbäddad runtime
+ * och för den som satt freya.light.backend till ollama.
  */
-const INLINE_TOKEN_CAP = 24;
-
-const FIM_STOP = [
-  "<|fim_pad|>",
-  "<|endoftext|>",
-  "<|fim_prefix|>",
-  "<|fim_suffix|>",
-  "<|fim_middle|>",
-  "<|file_sep|>",
-  "<|repo_name|>",
-];
-
-/**
- * FIM mot den INBÄDDADE modellen först. Den finns i det packade bygget och
- * behöver ingenting installerat, så den är standardvägen. Går den inte att nå
- * (dev-träd utan runtime, eller freya.local.enabled=false) faller vi tillbaka
- * på användarens egen Ollama nedan.
- */
-async function fimLocal(
+async function fimViaOllama(
   prefix: string,
   suffix: string,
-  signal: AbortSignal
-): Promise<string | undefined> {
-  // Latensen följer antalet genererade tokens, inte modellstorleken. Med
-  // n_predict 256 och inget radstopp fortsatte 1.5B:n förbi kompletteringen och
-  // hittade på fler metoder: uppmätt 2264 ms och ett förslag ingen ville ha.
-  //
-  // Ett tomrads-stopp ("\n\n") hjälpte inte — modellen skriver rad efter rad
-  // utan tomrader, så den gick till taket ändå. EN rad är rätt enhet för
-  // inline-förslag, så vi stoppar på "\n".
-  //
-  // Taket är ett tak, inte en ny default: den som höjer autocomplete.maxTokens
-  // får fortfarande längre förslag på Ollama-vägen.
-  const configured = cfg().get<number>("autocomplete.maxTokens") ?? 256;
-  const out = await localInfill(prefix, suffix, {
-    maxTokens: Math.min(configured, INLINE_TOKEN_CAP),
-    temperature: 0.1,
-    stop: [...FIM_STOP, "\n"],
-    signal,
-  });
-  return out === undefined ? undefined : out.replace(/<\|[^|]*\|>/g, "");
-}
-
-async function fim(
-  prefix: string,
-  suffix: string,
+  maxTokens: number,
+  stop: string[],
   signal: AbortSignal
 ): Promise<string> {
   const url = cfg().get<string>("ollama.url") || "http://localhost:11434";
   const model =
     cfg().get<string>("autocomplete.model") || "qwen2.5-coder:1.5b-base";
-  const numPredict = cfg().get<number>("autocomplete.maxTokens") ?? 256;
 
   const res = await fetch(`${url}/api/generate`, {
     method: "POST",
@@ -100,15 +56,15 @@ async function fim(
       stream: false,
       options: {
         temperature: 0.1,
-        num_predict: numPredict,
-        stop: FIM_STOP,
+        num_predict: maxTokens,
+        stop: [...FIM_STOP, ...stop],
       },
     }),
   });
 
   if (!res.ok) return "";
   const data: any = await res.json();
-  return String(data.response ?? "").replace(/<\|[^|]*\|>/g, "");
+  return cleanFimOutput(String(data.response ?? ""));
 }
 
 export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
@@ -116,34 +72,39 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
     async provideInlineCompletionItems(document, position, _context, token) {
       if (!cfg().get<boolean>("autocomplete.enabled", true)) return;
       // Inga förslag i utdata-kanaler, differ, scm-input osv.
-      if (document.uri.scheme !== "file" && document.uri.scheme !== "untitled") {
-        return;
-      }
+      if (!isEditableDocument(document)) return;
 
       const debounceMs = cfg().get<number>("autocomplete.debounceMs") ?? 200;
       if (!(await debounce(debounceMs, token))) return;
 
-      const maxPrefix = cfg().get<number>("autocomplete.prefixChars") ?? 3000;
-      const maxSuffix = cfg().get<number>("autocomplete.suffixChars") ?? 1000;
-
-      const text = document.getText();
       const offset = document.offsetAt(position);
-      const prefix = text.slice(Math.max(0, offset - maxPrefix), offset);
-      const suffix = text.slice(offset, offset + maxSuffix);
+      const { prefix, suffix } = fimContext(document, offset);
+
+      const configured = cfg().get<number>("autocomplete.maxTokens") ?? 256;
+      const plan = classifyFimTrigger(prefix, document.languageId, configured);
 
       // Koppla VS Codes cancellation till fetch-abort så att en övergiven
-      // request inte fortsätter belasta Ollama.
+      // request inte fortsätter belasta modellen.
       const ac = new AbortController();
       const sub = token.onCancellationRequested(() => ac.abort());
 
       let completion = "";
       try {
         // Inbäddad modell först, Ollama som reserv.
-        const local = await fimLocal(prefix, suffix, ac.signal);
-        completion = local !== undefined ? local : await fim(prefix, suffix, ac.signal);
+        const local = await runFim({
+          prefix,
+          suffix,
+          maxTokens: plan.maxTokens,
+          stop: plan.stop,
+          signal: ac.signal,
+        });
+        completion =
+          local !== undefined
+            ? local
+            : await fimViaOllama(prefix, suffix, plan.maxTokens, plan.stop, ac.signal);
       } catch (err: any) {
         // Föreslå inget — men var inte tyst OM det inte var användaren som
-        // avbröt. Ett nere Ollama såg tidigare exakt ut som "modellen hade
+        // avbröt. En nere modell såg tidigare exakt ut som "modellen hade
         // inget att föreslå", vilket är det som gjorde felet osynligt.
         if (!token.isCancellationRequested && err?.name !== "AbortError") {
           reportAutocompleteOutage();
@@ -151,6 +112,20 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
         return;
       } finally {
         sub.dispose();
+      }
+
+      if (plan.multiline) {
+        // Ett blockförslag får inte fortsätta förbi den stängande klammern och
+        // skriva nästa funktion också. Se trimToBlock.
+        completion = trimToBlock(completion, plan.baseIndent);
+      } else {
+        // Enradsplanerna har "\n" som stopp, men Ollama-reserven respekterar
+        // inte alltid stoppet exakt. Ett flerradigt svar där EN rad var utlovad
+        // är värre än ett kortare svar.
+        const nl = completion.indexOf("\n");
+        if (nl >= 0) {
+          completion = completion.slice(0, nl);
+        }
       }
 
       if (!completion.trim() || token.isCancellationRequested) return;
