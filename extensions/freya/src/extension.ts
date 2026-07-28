@@ -17,6 +17,7 @@ import { registerCommitMessage } from "./commitMessage.js";
 import { registerSecretsGuard } from "./secretsGuard.js";
 import { registerStagedSecretScan } from "./secretsStaged.js";
 import { initLocalServer } from "./localServer.js";
+import { initInstructServer } from "./instructServer.js";
 import { registerExplain } from "./explain.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
@@ -34,6 +35,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
   // ska vara på väg upp medan resten registreras. Saknas runtime:n faller
   // anroparna tillbaka på Ollama av sig själva.
   initLocalServer(ctx, () => void refreshHealth());
+
+  // 3B-instruct-lanen får sin livscykel registrerad här men startas INTE nu.
+  // Den spawnas vid första instruct-anropet och laddas ur efter ~5 minuters
+  // tystnad. Skälet är minne: 1.5B + 3B residenta samtidigt lämnar inte plats
+  // åt editorn på en 8 GB-maskin. Se instructServer.ts.
+  initInstructServer(ctx, () => void refreshHealth());
 
   // Routningen av den TUNGA lanen (auto -> moln om nycklar finns, annars den
   // valfria Ollama-modellen) behover veta om nycklar finns. chatBackend() ar

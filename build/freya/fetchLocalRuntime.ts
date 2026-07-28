@@ -7,25 +7,36 @@
 //
 //   node --experimental-strip-types build/freya/fetchLocalRuntime.ts
 //
-// Två delar:
+// Tre delar:
 //   1. llama.cpp-server, prebuilt CPU-bygge för win32-x64 från llama.cpp:s
 //      officiella GitHub-release. CPU-bygget och inte CUDA/Vulkan: en 1.5B
 //      går tillräckligt fort på CPU (~390 ms per komplettering mätt), och
 //      kompatibilitet på VILKEN maskin som helst är viktigare än hastighet.
 //      Zip:en innehåller ett dussin ggml-cpu-*.dll (sse42, x64, sandybridge,
 //      ivybridge, haswell, skylakex, icelake, alderlake, zen4 ...) som väljs i
-//      runtime, så även en CPU utan AVX2 fungerar.
-//   2. GGUF-modellen (Qwen2.5-Coder-1.5B base, Q4_K_M).
+//      runtime, så även en CPU utan AVX2 fungerar. BINÄREN ÄR DELAD av båda
+//      modellerna -- llama-server tar modellen som argument.
+//   2. model/       GGUF (Qwen2.5-Coder-1.5B BASE, Q4_K_M) -> FIM-lanen, 11435.
+//   3. model-instruct/ GGUF (Qwen2.5-Coder-3B INSTRUCT, Q4_K_M) -> instruct-
+//      lanen, 11436. Base kan inte följa en instruktion och instruct är sämre
+//      på FIM, så det är två modeller för två roller -- inte redundans.
 //
-// LICENSER (kontrollerade, se README i samma mapp):
-//   llama.cpp .................. MIT
-//   Qwen2.5-Coder-1.5B (base) .. Apache-2.0
-// Båda tillåter vidaredistribution i en packad app. Licenstexterna kopieras
-// till resources/freya-runtime/ av det här skriptet.
+// LICENSER (kontrollerade):
+//   llama.cpp ...................... MIT
+//   Qwen2.5-Coder-1.5B (base) ...... Apache-2.0
+//   Qwen2.5-Coder-3B-Instruct ...... Qwen RESEARCH License  <-- LÄS DETTA
 //
-// resources/freya-runtime/ är GITIGNORE:AD med flit: ~1 GB modellvikter hör
-// inte i git-historiken. Saknas mappen faller Freya tillbaka på Ollama, vilket
-// är exakt vad ett dev-träd utan runtime ska göra.
+// VARNING OM 3B:N. Qwen2.5-Coder är Apache-2.0 i alla storlekar UTOM 3B, som
+// ligger under Qwen Research License och därmed inte tillåter kommersiell
+// användning. Modellen är specificerad uppifrån och hämtas därför som beställd,
+// men för ett kommersiellt distribuerat bygge måste den bytas. Bytet är EN
+// konstant: sätt INSTRUCT_MODEL till ett Apache-2.0-alternativ i samma
+// storleksklass -- ibm-granite/granite-3b-code-instruct-128k-GGUF är det
+// närmaste (Apache-2.0, coder-instruct, ~2 GB i Q4_K_M).
+//
+// resources/freya-runtime/ är GITIGNORE:AD med flit: ~3 GB modellvikter hör
+// inte i git-historiken. Saknas model/ faller FIM-lanen tillbaka på Ollama;
+// saknas model-instruct/ är instruct-funktionerna avstängda och säger det.
 
 import * as cp from 'child_process';
 import * as crypto from 'crypto';
@@ -38,6 +49,7 @@ const REPO_ROOT = path.dirname(path.dirname(path.dirname(fileURLToPath(import.me
 const RUNTIME_DIR = path.join(REPO_ROOT, 'resources', 'freya-runtime');
 const BIN_DIR = path.join(RUNTIME_DIR, 'win32-x64');
 const MODEL_DIR = path.join(RUNTIME_DIR, 'model');
+const INSTRUCT_MODEL_DIR = path.join(RUNTIME_DIR, 'model-instruct');
 
 /** Pinnad llama.cpp-release. Höj medvetet, inte automatiskt. */
 const LLAMA_BUILD = 'b10149';
@@ -54,12 +66,54 @@ const MODEL_FILE = 'qwen2.5-coder-1.5b-base-q4_k_m.gguf';
  */
 const OLLAMA_MODEL_REF = 'qwen2.5-coder:1.5b-base';
 
+/**
+ * INSTRUCT-MODELLEN (3B-lanen). Ett byte av modell ska vara ett byte av det
+ * här objektet och ingenting annat -- se licensvarningen i filhuvudet.
+ *
+ * Till skillnad från 1.5B:n hämtas den från HuggingFace och inte ur en lokal
+ * Ollama-installation. Skälet är produktlöftet: bygget får inte kräva att
+ * någon kört `ollama pull` först. Finns GGUF:en ändå i en lokal Ollama
+ * används den (samma fil, ingen ny nedladdning) -- men det är en genväg, inte
+ * ett krav.
+ */
+const INSTRUCT_MODEL = {
+	file: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf',
+	url:
+		'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/' +
+		'qwen2.5-coder-3b-instruct-q4_k_m.gguf',
+	/** Verifierad på den hämtade filen 2026-07-29. */
+	sha256: '724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7',
+	bytes: 2_104_932_800,
+	/** Ollama-taggen med samma vikter, om den råkar finnas lokalt. */
+	ollamaRef: 'qwen2.5-coder:3b-instruct-q4_K_M',
+	license: 'Qwen Research License (INTE Apache-2.0 -- se filhuvudet)',
+	licenseUrl: 'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct/blob/main/LICENSE',
+	homepage: 'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF',
+};
+
 function log(msg: string): void {
 	console.log(`[freya-runtime] ${msg}`);
 }
 
 function sha256File(file: string): string {
 	return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+}
+
+/** Som sha256File(), men läser i bitar. En 2 GB-fil ska inte in i heapen. */
+function sha256FileStreaming(file: string): string {
+	const hash = crypto.createHash('sha256');
+	const fd = fs.openSync(file, 'r');
+	try {
+		const buf = Buffer.allocUnsafe(8 * 1048576);
+		for (;;) {
+			const read = fs.readSync(fd, buf, 0, buf.length, null);
+			if (read <= 0) { break; }
+			hash.update(buf.subarray(0, read));
+		}
+	} finally {
+		fs.closeSync(fd);
+	}
+	return hash.digest('hex');
 }
 
 async function download(url: string, dest: string): Promise<void> {
@@ -71,6 +125,57 @@ async function download(url: string, dest: string): Promise<void> {
 	const buf = Buffer.from(await res.arrayBuffer());
 	fs.writeFileSync(dest, buf);
 	log(`skrev ${dest} (${(buf.length / 1048576).toFixed(1)} MB)`);
+}
+
+/**
+ * Som download(), men STRÖMMAR till disk. En 2 GB-modell får inte gå via en
+ * Buffer i minnet: det är i bästa fall 2 GB heap-tryck och i sämsta fall ett
+ * hårt tak i Node. Skriver till .part och byter namn först när hela filen är
+ * nere, så ett avbrutet bygge inte lämnar en halv GGUF som ser färdig ut.
+ */
+async function downloadStreaming(url: string, dest: string, expectedBytes?: number): Promise<void> {
+	log(`hämtar ${url}`);
+	const res = await fetch(url, { redirect: 'follow' });
+	if (!res.ok || !res.body) {
+		throw new Error(`${res.status} ${res.statusText} för ${url}`);
+	}
+
+	const part = `${dest}.part`;
+	fs.mkdirSync(path.dirname(dest), { recursive: true });
+	const out = fs.createWriteStream(part);
+	let written = 0;
+	let nextReport = 128 * 1048576;
+
+	try {
+		// @ts-expect-error -- ReadableStream är async-itererbar i Node 18+
+		for await (const chunk of res.body) {
+			written += chunk.length;
+			if (!out.write(chunk)) {
+				await new Promise<void>(resolve => out.once('drain', () => resolve()));
+			}
+			if (written >= nextReport) {
+				log(`  ${(written / 1048576).toFixed(0)} MB ...`);
+				nextReport += 128 * 1048576;
+			}
+		}
+	} catch (err) {
+		out.destroy();
+		fs.rmSync(part, { force: true });
+		throw err;
+	}
+
+	await new Promise<void>((resolve, reject) => {
+		out.once('error', reject);
+		out.end(() => resolve());
+	});
+
+	if (expectedBytes !== undefined && written !== expectedBytes) {
+		fs.rmSync(part, { force: true });
+		throw new Error(`fel storlek: fick ${written} bytes, förväntade ${expectedBytes}`);
+	}
+
+	fs.renameSync(part, dest);
+	log(`skrev ${dest} (${(written / 1048576).toFixed(1)} MB)`);
 }
 
 async function fetchServerBinary(): Promise<void> {
@@ -105,10 +210,10 @@ async function fetchServerBinary(): Promise<void> {
 	log(`packade upp till ${BIN_DIR}`);
 }
 
-/** Hittar GGUF-blobben i en lokal Ollama-installation. */
-function findOllamaBlob(): string | undefined {
+/** Hittar GGUF-blobben för en given Ollama-tagg i en lokal installation. */
+function findOllamaBlob(ref: string = OLLAMA_MODEL_REF): string | undefined {
 	const home = os.homedir();
-	const [name, tag] = OLLAMA_MODEL_REF.split(':');
+	const [name, tag] = ref.split(':');
 	const manifest = path.join(
 		process.env.OLLAMA_MODELS ?? path.join(home, '.ollama', 'models'),
 		'manifests', 'registry.ollama.ai', 'library', name, tag
@@ -159,6 +264,57 @@ function fetchModel(): void {
 	log(`skrev ${dest} (${(fs.statSync(dest).size / 1048576).toFixed(1)} MB, GGUF-magic OK)`);
 }
 
+/** Läser de fyra magic-byten utan att dra in hela filen. */
+function assertGguf(file: string): void {
+	const fd = fs.openSync(file, 'r');
+	try {
+		const buf = Buffer.allocUnsafe(4);
+		fs.readSync(fd, buf, 0, 4, 0);
+		if (buf.toString('latin1') !== 'GGUF') {
+			throw new Error(`${path.basename(file)} är inte en GGUF (fel magic)`);
+		}
+	} finally {
+		fs.closeSync(fd);
+	}
+}
+
+/**
+ * INSTRUCT-modellen (3B-lanen). HuggingFace i första hand, lokal Ollama som
+ * genväg. Verifierar storlek OCH sha256 -- en modell som buntas i en installer
+ * ska inte kunna vara en annan fil än den vi granskade.
+ */
+async function fetchInstructModel(): Promise<void> {
+	const dest = path.join(INSTRUCT_MODEL_DIR, INSTRUCT_MODEL.file);
+	if (fs.existsSync(dest)) {
+		log(`${INSTRUCT_MODEL.file} finns redan — hoppar över`);
+		return;
+	}
+
+	fs.mkdirSync(INSTRUCT_MODEL_DIR, { recursive: true });
+
+	// Genväg: samma vikter kan redan ligga i en lokal Ollama.
+	const blob = findOllamaBlob(INSTRUCT_MODEL.ollamaRef);
+	if (blob && fs.statSync(blob).size === INSTRUCT_MODEL.bytes) {
+		log(`kopierar instruct-modellen från ${blob}`);
+		fs.copyFileSync(blob, dest);
+	} else {
+		await downloadStreaming(INSTRUCT_MODEL.url, dest, INSTRUCT_MODEL.bytes);
+	}
+
+	assertGguf(dest);
+
+	const actual = sha256FileStreaming(dest);
+	if (actual !== INSTRUCT_MODEL.sha256) {
+		fs.rmSync(dest, { force: true });
+		throw new Error(
+			`sha256 stämmer inte för ${INSTRUCT_MODEL.file}\n` +
+			`  förväntad: ${INSTRUCT_MODEL.sha256}\n` +
+			`  faktisk:   ${actual}`
+		);
+	}
+	log(`${INSTRUCT_MODEL.file}: sha256 OK, GGUF-magic OK`);
+}
+
 function writeLicenseNotice(): void {
 	const notice = [
 		'Freyas inbäddade lokala runtime',
@@ -169,13 +325,26 @@ function writeLicenseNotice(): void {
 		'  Licens: MIT — Copyright (c) 2023-2026 The ggml authors',
 		'  https://github.com/ggml-org/llama.cpp/blob/master/LICENSE',
 		'',
-		`Modell: ${MODEL_FILE}`,
+		`Modell (FIM-lanen): ${MODEL_FILE}`,
 		'  Qwen2.5-Coder-1.5B (base), kvantiserad till Q4_K_M',
 		'  Licens: Apache-2.0',
 		'  https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B',
 		'',
-		'Båda licenserna tillåter vidaredistribution i binär form. Den här filen',
-		'följer med i det packade bygget som attribution.',
+		`Modell (instruct-lanen): ${INSTRUCT_MODEL.file}`,
+		'  Qwen2.5-Coder-3B-Instruct, kvantiserad till Q4_K_M',
+		`  Licens: ${INSTRUCT_MODEL.license}`,
+		`  ${INSTRUCT_MODEL.licenseUrl}`,
+		`  ${INSTRUCT_MODEL.homepage}`,
+		'',
+		'  OBS: Qwen2.5-Coder är Apache-2.0 i alla storlekar UTOM 3B, som ligger',
+		'  under Qwen Research License. Den licensen tillåter vidaredistribution',
+		'  för forskning och utvärdering men INTE kommersiell användning. För ett',
+		'  kommersiellt bygge måste modellen bytas mot ett Apache-2.0-alternativ',
+		'  i samma storleksklass (t.ex. granite-3b-code-instruct-128k). Bytet är',
+		'  konstanten INSTRUCT_MODEL i build/freya/fetchLocalRuntime.ts.',
+		'',
+		'llama.cpp- och 1.5B-licenserna tillåter vidaredistribution i binär form.',
+		'Den här filen följer med i det packade bygget som attribution.',
 		''
 	].join('\n');
 	fs.mkdirSync(RUNTIME_DIR, { recursive: true });
@@ -186,6 +355,14 @@ function writeLicenseNotice(): void {
 async function main(): Promise<void> {
 	await fetchServerBinary();
 	fetchModel();
+	// FREYA_SKIP_INSTRUCT=1 hoppar över 3B:n. Finns för den som bara arbetar på
+	// FIM-lanen och inte vill vänta på 2 GB; bygget hanterar en saknad
+	// model-instruct/ genom att stänga av instruct-funktionerna.
+	if (process.env.FREYA_SKIP_INSTRUCT === '1') {
+		log('FREYA_SKIP_INSTRUCT=1 — hoppar över instruct-modellen');
+	} else {
+		await fetchInstructModel();
+	}
 	writeLicenseNotice();
 	log('klart');
 }

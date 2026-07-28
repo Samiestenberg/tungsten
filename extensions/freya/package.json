@@ -29,6 +29,8 @@
       "restrictedConfigurations": [
         "freya.local.runtimePath",
         "freya.local.port",
+        "freya.instruct.runtimePath",
+        "freya.instruct.port",
         "freya.ollama.url"
       ]
     }
@@ -188,6 +190,31 @@
           "default": "",
           "description": "Custom path to the freya-runtime folder. Empty = look in the app's resources."
         },
+        "freya.instruct.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use the embedded 3B instruct model (llama.cpp + Qwen2.5-Coder-3B-Instruct) for Explain, Inline edit, Fix, Generate tests, the refactor actions and the built-in guide chat. Off = those features say they are unavailable."
+        },
+        "freya.instruct.port": {
+          "type": "number",
+          "default": 11436,
+          "description": "Port for the embedded instruct llama.cpp server. 11434 belongs to Ollama and 11435 to the FIM model; neither is ever used."
+        },
+        "freya.instruct.contextSize": {
+          "type": "number",
+          "default": 8192,
+          "description": "Context window for the instruct model. Larger than the FIM model's because an instruct prompt carries a file plus a diff."
+        },
+        "freya.instruct.runtimePath": {
+          "type": "string",
+          "default": "",
+          "description": "Custom path to the freya-runtime folder for the instruct model. Empty = look in the app's resources."
+        },
+        "freya.instruct.idleUnloadMs": {
+          "type": "number",
+          "default": 300000,
+          "description": "Release the instruct model from memory after this many milliseconds of inactivity. 0 = keep it loaded. Minimum 30000. The point is that the 1.5B and the 3B are not forced to be resident at the same time on an 8 GB machine."
+        },
         "freya.secrets.enabled": {
           "type": "boolean",
           "default": true,
@@ -251,7 +278,8 @@
   },
   "scripts": {
     "compile": "gulp compile-extension:freya",
-    "watch": "gulp watch-extension:freya"
+    "watch": "gulp watch-extension:freya",
+    "test-unit": "mocha --ui tdd ./out/test/*.test.js"
   },
   "repository": {
     "type": "git",

@@ -419,20 +419,41 @@ function packageTask(platform: string, arch: string, sourceFolderName: string, d
 			deps
 		];
 
-		// Freyas inbäddade lokala modell: llama-server-binären för DEN HÄR
-		// plattformen plus GGUF:en, in i resources/app/freya-runtime/.
-		// Hämtas av `node --experimental-strip-types build/freya/fetchLocalRuntime.ts`
-		// till en gitignore:ad mapp, så den kan mycket väl saknas: då hoppas den
-		// här strömmen över helt och appen faller tillbaka på Ollama. Modellen
-		// tas bara med när plattformens binär finns — annars hade vi shippat
-		// 940 MB vikter utan något som kan köra dem.
+		// Freya's embedded local models: the llama-server binary for THIS
+		// platform plus the GGUFs, into resources/app/freya-runtime/.
+		// Fetched by `node --experimental-strip-types build/freya/fetchLocalRuntime.ts`
+		// into a gitignored folder, so it may well be missing: then this stream
+		// is skipped entirely and the app falls back to Ollama. The models are
+		// only included when the platform's binary is there -- otherwise we
+		// would ship 3 GB of weights with nothing that can run them.
+		//
+		// Two models, two lanes: model/ is the 1.5B base used for fill-in-the-
+		// middle (port 11435) and model-instruct/ is the 3B instruct used for
+		// everything that reads a user instruction (port 11436).
 		const freyaRuntimeBinDir = path.join(root, 'resources', 'freya-runtime', `${platform}-${arch}`);
 		if (fs.existsSync(freyaRuntimeBinDir)) {
-			mergeStreams.push(gulp.src([
+			const freyaRuntimeGlobs = [
 				`resources/freya-runtime/${platform}-${arch}/**`,
 				'resources/freya-runtime/model/**',
 				'resources/freya-runtime/THIRD-PARTY-NOTICES.txt'
-			], { base: 'resources', dot: true, allowEmpty: true }));
+			];
+
+			// THE INSTRUCT MODEL (3B, ~2 GB) is bundled BY DEFAULT. That is the
+			// whole product promise: everything runs locally from the first
+			// launch, no download and no account. The installer grows ~2 GB,
+			// which is the deliberate price.
+			//
+			// FREYA_BUNDLE_INSTRUCT=0 leaves it out. The flag exists so that a
+			// first-run download can be switched on later without touching the
+			// build logic again -- but it is opt-OUT, not opt-in, so a build
+			// that forgets to set anything gets the bundled behaviour.
+			if (process.env['FREYA_BUNDLE_INSTRUCT'] !== '0') {
+				freyaRuntimeGlobs.push('resources/freya-runtime/model-instruct/**');
+			} else {
+				console.warn('[freya] FREYA_BUNDLE_INSTRUCT=0 -- the 3B instruct model is NOT bundled in this build');
+			}
+
+			mergeStreams.push(gulp.src(freyaRuntimeGlobs, { base: 'resources', dot: true, allowEmpty: true }));
 		}
 
 		let all = es.merge(...mergeStreams);

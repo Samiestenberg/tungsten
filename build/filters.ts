@@ -73,6 +73,12 @@ export const unicodeFilter = Object.freeze<string[]>([
 	// part of what the model reads.
 	'!extensions/freya/**',
 
+	// build/freya is the fetcher for Freya's embedded runtime. Same reason as
+	// above: it is Tungsten-only code and its log output is Swedish, so the
+	// developer reading a failed model download reads it in the same language
+	// as the rest of Freya.
+	'!build/freya/**',
+
 	'!src/vs/base/browser/dompurify/**',
 	'!src/vs/workbench/services/keybinding/browser/keyboardLayouts/**',
 	'!src/vs/workbench/contrib/terminal/common/scripts/psreadline/**',

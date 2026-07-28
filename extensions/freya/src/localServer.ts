@@ -12,9 +12,8 @@
 // returnerar localEndpoint() undefined, och anroparen faller tillbaka på Ollama.
 import * as vscode from "vscode";
 import * as cp from "child_process";
-import * as fs from "fs";
 import * as path from "path";
-import * as crypto from "crypto";
+import { derivedApiKey, findRuntime, probeReady } from "./runtimeLayout.js";
 
 export interface LocalEndpoint {
   /** t.ex. http://127.0.0.1:11435 */
@@ -25,8 +24,8 @@ export interface LocalEndpoint {
   readonly modelName: string;
 }
 
-const SERVER_EXE = "llama-server.exe";
-const MODEL_GLOB_SUFFIX = ".gguf";
+/** Modellmappen som HÖR TILL den här lanen. 3B:n bor i model-instruct/. */
+const MODEL_SUBDIR = "model";
 const HEALTH_TIMEOUT_MS = 60_000;
 
 function cfg() {
@@ -41,87 +40,9 @@ export function localPort(): number {
   return port === 11434 ? 11435 : port;
 }
 
-/**
- * Var runtime:n ligger. `vscode.env.appRoot` är resources/app i ett packat
- * bygge och repo-roten i dev, så båda fallen täcks av de två kandidaterna.
- */
-function runtimeRoots(): string[] {
-  const configured = cfg().get<string>("local.runtimePath");
-  const roots = configured ? [configured] : [];
-  const appRoot = vscode.env.appRoot;
-  roots.push(
-    path.join(appRoot, "freya-runtime"), // packat bygge
-    path.join(appRoot, "resources", "freya-runtime") // dev-träd
-  );
-  return roots;
-}
-
-interface RuntimePaths {
-  exe: string;
-  model: string;
-}
-
-/** Hittar binär + modell, eller undefined om något saknas. */
-export function findRuntime(): RuntimePaths | undefined {
-  for (const root of runtimeRoots()) {
-    const exe = path.join(root, process.platform === "win32" ? "win32-x64" : "", SERVER_EXE);
-    const modelDir = path.join(root, "model");
-    if (!fs.existsSync(exe) || !fs.existsSync(modelDir)) {
-      continue;
-    }
-    const model = fs
-      .readdirSync(modelDir)
-      .filter((f) => f.toLowerCase().endsWith(MODEL_GLOB_SUFFIX))
-      .sort()[0];
-    if (model) {
-      return { exe, model: path.join(modelDir, model) };
-    }
-  }
-  return undefined;
-}
-
-/**
- * Nyckeln är HÄRLEDD, inte slumpad: varje fönster räknar fram samma nyckel, så
- * ett andra fönster kan återanvända en server som redan kör i stället för att
- * ladda modellen en gång till. Poängen med nyckeln är att llama-server sätter
- * CORS till '*' -- utan den kan en godtycklig webbsida du besöker POSTa till
- * 127.0.0.1 och använda din CPU. En webbsida kan inte räkna fram den här.
- */
-function derivedApiKey(modelPath: string): string {
-  return crypto
-    .createHash("sha256")
-    .update(`freya-local:${modelPath}:${vscode.env.machineId}`)
-    .digest("hex")
-    .slice(0, 32);
-}
-
-/**
- * Redo OCH vår. Vi frågar /props och inte /health med flit: llama-server
- * lämnar /health öppet (verifierat: 200 utan nyckel) medan /props och /infill
- * svarar 401 utan rätt nyckel. En hälsokoll mot /health skulle alltså säga "ja"
- * även om det är någon ANNAN llama-server på porten -- och då hade varje
- * efterföljande anrop fallit på 401. /props svarar 200 bara om nyckeln stämmer,
- * vilket är exakt villkoret för att vi ska få återanvända servern.
- */
-async function probeReady(
-  baseUrl: string,
-  apiKey: string,
-  timeoutMs = 1500
-): Promise<boolean> {
-  const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${baseUrl}/props`, {
-      signal: ac.signal,
-      headers: { Authorization: `Bearer ${apiKey}` },
-    });
-    return res.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Sökvägsuppslag, nyckelhärledning och /props-proben bor i runtimeLayout.ts.
+// Instruct-lanen (3B, port 11436) anropar SAMMA funktioner med en annan
+// modellmapp, så de två lanerna kan inte glida isär i var de letar.
 
 class LocalModelServer {
   private proc: cp.ChildProcess | undefined;
@@ -192,7 +113,7 @@ class LocalModelServer {
       return undefined;
     }
 
-    const runtime = findRuntime();
+    const runtime = findRuntime(cfg().get<string>("local.runtimePath"), MODEL_SUBDIR);
     if (!runtime) {
       // Helt normalt i ett dev-träd: resources/freya-runtime är gitignore:ad.
       this.log.info(
