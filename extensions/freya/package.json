@@ -85,6 +85,21 @@
         "command": "freya.explainSelection",
         "title": "Explain selected code",
         "category": "Freya"
+      },
+      {
+        "command": "freya.nextEdit.jump",
+        "title": "Jump to the predicted next edit",
+        "category": "Freya"
+      },
+      {
+        "command": "freya.nextEdit.apply",
+        "title": "Apply the predicted next edit",
+        "category": "Freya"
+      },
+      {
+        "command": "freya.nextEdit.dismiss",
+        "title": "Dismiss the predicted next edit",
+        "category": "Freya"
       }
     ],
     "menus": {
@@ -246,6 +261,11 @@
           "type": "string",
           "default": "qwen2.5-coder:1.5b-base",
           "description": "FIM model in Ollama. Must be a base model, not an instruct model."
+        },
+        "freya.nextEdit.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Predict WHERE the next change goes after you edit a line, and suggest what should be there. Runs on the local FIM model. Nothing is ever applied without you accepting it."
         },
         "freya.autocomplete.debounceMs": {
           "type": "number",

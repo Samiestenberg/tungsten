@@ -1,10 +1,11 @@
-// Freya inline-autocomplete: liten LOKAL FIM-modell via Ollama.
-// Egen lane, medvetet skild från chatten. Chatten/agenten får gå till Workers
-// AI om användaren vill; komplettering ska vara gratis, snabb och fungera
-// offline, så den går alltid mot Ollama på maskinen.
+// Freya inline-autocomplete: liten LOKAL FIM-modell (1.5B, port 11435).
+// Egen lane, medvetet skild från chatten. Komplettering ska vara gratis,
+// snabb och fungera offline, så den går alltid mot en modell på maskinen --
+// den inbäddade i första hand, användarens egen Ollama som reserv.
 import * as vscode from "vscode";
 import { reportAutocompleteOutage } from "./healthState.js";
 import { localInfill } from "./localModel.js";
+import { recordCompletionShown } from "./fim/nextEdit.js";
 
 function cfg() {
   return vscode.workspace.getConfiguration("freya");
@@ -153,6 +154,11 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
       }
 
       if (!completion.trim() || token.isCancellationRequested) return;
+
+      // Next-edit-förutsägelsen ska inte fyra på det användaren nyss
+      // accepterade från autocomplete: det är inte en ändring användaren
+      // gjorde, det är vårt eget förslag som kom tillbaka.
+      recordCompletionShown(document.uri, completion);
 
       return [
         new vscode.InlineCompletionItem(
