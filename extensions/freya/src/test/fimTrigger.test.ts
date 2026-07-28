@@ -18,11 +18,14 @@ import {
 	BLOCK_TOKEN_CAP,
 	classifyFimTrigger,
 	currentLinePrefix,
+	EXPRESSION_TOKEN_CAP,
 	indentOf,
+	inSignature,
 	INLINE_TOKEN_CAP,
 	opensBlock,
 	previousNonEmptyLine,
 	trimToBlock,
+	unclosedParens,
 } from '../fim/fimTrigger.js';
 
 /** Bygger ett prefix dar markoren star sist. | i indata betyder inget speciellt. */
@@ -145,6 +148,93 @@ suite('FIM: klassificeringen', () => {
 
 	test('tomt prefix kraschar inte', () => {
 		assert.strictEqual(classifyFimTrigger('', 'typescript', 256).kind, 'line');
+	});
+});
+
+suite('FIM: return-uttryck', () => {
+
+	test('ensamt return pa raden -> RETURN', () => {
+		const plan = classifyFimTrigger(prefixOf('function f(xs) {', '  const n = xs.length;', '  return'), 'typescript', 256);
+		assert.strictEqual(plan.kind, 'return');
+		assert.strictEqual(plan.multiline, false);
+		assert.strictEqual(plan.maxTokens, EXPRESSION_TOKEN_CAP);
+		assert.deepStrictEqual(plan.stop, ['\n']);
+	});
+
+	test('return med efterfoljande mellanslag raknas ocksa', () => {
+		assert.strictEqual(classifyFimTrigger('  return ', 'python', 256).kind, 'return');
+	});
+
+	test('KRITISKT: return vinner over block', () => {
+		// Ett ensamt return pa forsta raden i en nyoppnad kropp ar ETT uttryck,
+		// inte en hel kropp. Utan prioriteringen hade det kostat 96 tokens.
+		const plan = classifyFimTrigger(prefixOf('function f() {', '  return'), 'typescript', 256);
+		assert.strictEqual(plan.kind, 'return');
+	});
+
+	test('KONTROLLFALL: return som redan har ett uttryck ar en vanlig rad', () => {
+		assert.strictEqual(classifyFimTrigger('  return a +', 'typescript', 256).kind, 'line');
+	});
+
+	test('KONTROLLFALL: ett ord som borjar pa return ar inte return', () => {
+		assert.strictEqual(classifyFimTrigger('  returnValue', 'typescript', 256).kind, 'line');
+	});
+});
+
+suite('FIM: typsignaturer', () => {
+
+	test('parenteser raknas utanfor strangar', () => {
+		assert.strictEqual(unclosedParens('function f(a, b'), 1);
+		assert.strictEqual(unclosedParens('function f(a, b)'), 0);
+		assert.strictEqual(unclosedParens('foo(bar(baz'), 2);
+	});
+
+	test('KRITISKT: parenteser i en strang raknas inte', () => {
+		// Utan strangmedvetenheten hade `log("(")` sett ut som en oppen
+		// parameterlista och utlost typgissningar mitt i koden.
+		assert.strictEqual(unclosedParens('log("(")'), 0);
+		assert.strictEqual(unclosedParens("const s = '(';"), 0);
+	});
+
+	test('escape i en strang forvirrar inte raknaren', () => {
+		assert.strictEqual(unclosedParens('const s = "a\\"(";'), 0);
+	});
+
+	test('inne i parameterlistan -> signatur', () => {
+		assert.ok(inSignature('function add(a', 'typescript'));
+		assert.ok(inSignature('  def add(self, a', 'python'));
+		assert.ok(inSignature('fn add(a: i32, b', 'rust'));
+	});
+
+	test('direkt efter parameterlistan -> returtypens plats', () => {
+		assert.ok(inSignature('function add(a: number, b: number)', 'typescript'));
+		assert.ok(inSignature('  def add(self, a, b)', 'python'));
+	});
+
+	test('KONTROLLFALL: javascript har inga typer att gissa', () => {
+		assert.ok(!inSignature('function add(a', 'javascript'));
+		assert.ok(!inSignature('function add(a, b)', 'javascriptreact'));
+	});
+
+	test('KONTROLLFALL: ett vanligt funktionsANROP ar ingen signatur', () => {
+		// Det har ar det dyra falset: varje foo( i en kropp skulle annars
+		// utlosa typgissningar.
+		assert.ok(!inSignature('  const total = calculateSum(items', 'typescript'));
+		assert.ok(!inSignature('  console.log(x', 'typescript'));
+	});
+
+	test('KONTROLLFALL: kroppen har redan borjat', () => {
+		// { eller : efter parenteserna betyder att signaturen ar fardig.
+		assert.ok(!inSignature('function add(a: number): number {', 'typescript'));
+		assert.ok(!inSignature('def add(a, b):', 'python'));
+	});
+
+	test('signaturplanen stoppar innan kroppen', () => {
+		const plan = classifyFimTrigger('function add(a', 'typescript', 256);
+		assert.strictEqual(plan.kind, 'signature');
+		assert.ok(plan.stop.includes('{'), 'maste stoppa pa { -- vi fyller signaturen, inte funktionen');
+		assert.ok(plan.stop.includes('\n'));
+		assert.strictEqual(plan.maxTokens, EXPRESSION_TOKEN_CAP);
 	});
 });
 

@@ -10,7 +10,7 @@
 // tokenbudgeten och var vi stoppar. Flera providers hade betytt flera anrop
 // per tangenttryck och flera förslag som slåss om samma yta.
 
-export type FimKind = "line" | "block";
+export type FimKind = "line" | "block" | "return" | "signature";
 
 export interface FimPlan {
 	kind: FimKind;
@@ -42,6 +42,13 @@ export const INLINE_TOKEN_CAP = 24;
  */
 export const BLOCK_TOKEN_CAP = 96;
 
+/**
+ * Tak för ett UTTRYCK: ett return-värde eller en typ. Båda är korta till sin
+ * natur, och budgeten är satt efter vad de faktiskt är -- inte efter vad
+ * modellen skulle vilja skriva om den fick.
+ */
+export const EXPRESSION_TOKEN_CAP = 40;
+
 /** Språk där ett block öppnas med { och stängs med }. */
 const BRACE_LANGUAGES = new Set([
 	"typescript", "typescriptreact", "javascript", "javascriptreact",
@@ -54,6 +61,68 @@ const COLON_LANGUAGES = new Set(["python", "coffeescript", "nim"]);
 
 /** Nyckelord som öppnar en kropp utan att raden slutar på { eller :. */
 const BARE_BLOCK_OPENERS = /\b(else|do|try|finally)\s*$/;
+
+/**
+ * Språk där en typsignatur ens finns att gissa. I javascript finns inga typer
+ * att fylla i, så där ska ingen tokenbudget gå åt till det.
+ */
+const TYPED_LANGUAGES = new Set([
+	"typescript", "typescriptreact", "python", "rust", "go", "java",
+	"csharp", "cpp", "c", "kotlin", "swift", "dart", "scala", "php",
+]);
+
+/**
+ * Hur många ( som ännu inte stängts på raden. Sträng- och teckenmedveten, så
+ * en parentes inne i en strängliteral inte räknas.
+ */
+export function unclosedParens(line: string): number {
+	let depth = 0;
+	let quote: string | undefined;
+	for (let i = 0; i < line.length; i++) {
+		const ch = line[i];
+		if (quote) {
+			if (ch === "\\") { i++; continue; }
+			if (ch === quote) { quote = undefined; }
+			continue;
+		}
+		if (ch === '"' || ch === "'" || ch === "`") { quote = ch; continue; }
+		if (ch === "(") { depth++; }
+		else if (ch === ")") { depth--; }
+	}
+	return depth;
+}
+
+/**
+ * Står markören i en funktionssignatur, där en TYP hör hemma?
+ *
+ * Två fall, och bara två -- gissningarna ska vara de säkra:
+ *   1. inne i parameterlistan:   function f(a|
+ *   2. direkt efter listan:      function f(a: number)|      <- returtypen
+ *
+ * Kravet att raden ska se ut som en DEKLARATION är det som håller isär
+ * signaturfallet från ett vanligt funktionsanrop mitt i koden. Utan det hade
+ * varje `foo(` i kroppen utlöst typgissningar.
+ */
+export function inSignature(linePrefix: string, languageId: string): boolean {
+	if (!TYPED_LANGUAGES.has(languageId)) {
+		return false;
+	}
+
+	const looksLikeDeclaration =
+		/\b(function|def|fn|func|class|interface|public|private|protected|static|abstract|override)\b/.test(linePrefix) ||
+		/^\s*(export\s+)?(async\s+)?(function\s+)?[A-Za-z_$][\w$]*\s*\(/.test(linePrefix);
+	if (!looksLikeDeclaration) {
+		return false;
+	}
+
+	const open = unclosedParens(linePrefix);
+	if (open > 0) {
+		return true; // fall 1: inne i parameterlistan
+	}
+	// fall 2: listan är stängd och raden slutar där -- returtypens plats.
+	// Har kroppen redan börjat ({ eller :) är signaturen färdig.
+	return open === 0 && /\)\s*$/.test(linePrefix);
+}
 
 /** Raden markören står på, fram till markören. */
 export function currentLinePrefix(prefix: string): string {
@@ -109,6 +178,39 @@ export function classifyFimTrigger(
 ): FimPlan {
 	const linePrefix = currentLinePrefix(prefix);
 	const baseIndent = indentOf(linePrefix);
+
+	// RETURN. Raden är (blanktecken +) "return" och inget mer.
+	//
+	// Hög frekvens, låg risk: det som ska fyllas i är ETT uttryck, och uttrycket
+	// följer nästan alltid av vad kroppen ovanför redan gjort. Modellen behöver
+	// inte gissa avsikt -- den behöver bara läsa de fem raderna ovanför.
+	//
+	// Ligger före block-fallet med flit: ett `return` på en tom rad efter { är
+	// ett return-fall, inte ett block-fall.
+	if (/^\s*return\s*$/.test(linePrefix)) {
+		return {
+			kind: "return",
+			maxTokens: Math.min(configuredMaxTokens, EXPRESSION_TOKEN_CAP),
+			stop: ["\n"],
+			multiline: false,
+			baseIndent,
+		};
+	}
+
+	// TYPSIGNATUR. Markören står där en parametertyp eller en returtyp hör
+	// hemma. Typen härleds ur hur variablerna används i kroppen NEDANFÖR, vilket
+	// är precis vad FIM:ens suffix bär med sig -- det här är alltså ett fall
+	// där fill-in-the-middle är starkare än att bara fortsätta framåt.
+	if (inSignature(linePrefix, languageId)) {
+		return {
+			kind: "signature",
+			maxTokens: Math.min(configuredMaxTokens, EXPRESSION_TOKEN_CAP),
+			// Stoppa innan kroppen börjar: vi fyller signaturen, inte funktionen.
+			stop: ["\n", "{"],
+			multiline: false,
+			baseIndent,
+		};
+	}
 
 	// BLOCK. Markören står på en tom rad direkt efter en öppnad kropp. Det är
 	// ögonblicket då "resten av funktionskroppen" är det man vill ha, inte
