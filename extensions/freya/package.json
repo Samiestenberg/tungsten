@@ -119,6 +119,12 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "freya.generateTests",
+        "title": "Generate tests for this code",
+        "category": "Freya",
+        "icon": "$(beaker)"
+      },
+      {
         "command": "freya.syntaxFix.dismiss",
         "title": "Dismiss the suggested syntax fix",
         "category": "Freya"
@@ -153,6 +159,11 @@
           "command": "freya.explainSelection",
           "when": "editorTextFocus",
           "group": "freya@2"
+        },
+        {
+          "command": "freya.generateTests",
+          "when": "editorTextFocus",
+          "group": "freya@3"
         }
       ],
       "scm/title": [

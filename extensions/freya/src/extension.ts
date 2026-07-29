@@ -23,6 +23,7 @@ import { registerNextEdit } from "./fim/nextEdit.js";
 import { registerSyntaxFix } from "./fim/syntaxFix.js";
 import { registerInlineEdit } from "./inlineEdit.js";
 import { registerSemanticFix } from "./semanticFix.js";
+import { registerGenerateTests } from "./generateTests.js";
 import { registerPreview } from "./preview.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
@@ -69,6 +70,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerPreview(ctx);
   registerInlineEdit(ctx);
   registerSemanticFix(ctx);
+  registerGenerateTests(ctx);
 
   // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
   // är nere, och läget syns som en statusrad bara när något saknas.
