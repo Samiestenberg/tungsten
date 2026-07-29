@@ -5,24 +5,38 @@
 // vscode.lm-modell -- oavsett om participanten faktiskt tänker använda den.
 // Utan detta kommer en chat-request aldrig fram till Freyas handler.
 //
-// Vi löser det genom att servera vscode.lm med VÅRA egna modeller i stället
-// för att luta oss mot VS Codes inbyggda providers. Modellväljaren visar
-// Freyas modeller (BYOK/lokalt), inte "sign in to use Copilot".
+// Vi löser det genom att servera vscode.lm med VÅR EGEN modell i stället för
+// att luta oss mot VS Codes inbyggda providers. Modellväljaren visar den
+// inbäddade 3B:n, inte "sign in to use Copilot".
 //
-// Agent-loopen i participant.ts använder INTE den här vägen: den går direkt
-// mot ModelProvider med Freyas egna verktyg. Den här providern är den enkla
-// text-in/text-ut-ytan som vscode.lm-API:t förväntar sig.
+// EN ENDA MODELL, OCH DEN ÄR LOKAL. Tidigare visade den här providern antingen
+// qwen2.5-coder:14b via Ollama eller qwen3-30b via Cloudflare Workers AI,
+// beroende på om det fanns nycklar. Båda är retirerade som aktiva val: 14B
+// kräver att användaren pullar 9 GB, och molnvägen kräver ett konto och skickar
+// koden ut. Default-bygget kör allt lokalt, så modellväljaren ska visa exakt
+// det som faktiskt kör.
+//
+// Ingen tool-calling deklareras. Instruct-lanen har inga verktyg -- se
+// instructModel.ts -- och att påstå motsatsen här hade fått workbenchen att
+// skicka verktygsscheman vi inte kan hantera.
 import * as vscode from "vscode";
-import { createChatProvider, chatBackend } from "./config.js";
-import { AGENT_PAUSED_TEXT, isTrusted } from "./trust.js";
+import {
+  instructAvailable,
+  instructOneShot,
+  INSTRUCT_MISSING,
+  type InstructTurn,
+} from "./instructModel.js";
+import { instructState } from "./instructServer.js";
+import { GUIDE_SYSTEM } from "./guidePrompt.js";
 
 export const FREYA_VENDOR = "freya";
 
-// Plattar ut vscode.lm-meddelanden till agentkärnans format.
-function toAgentMessages(
+/** Plattar ut vscode.lm-meddelanden till instruct-lanens format. */
+function toTurns(
   messages: readonly vscode.LanguageModelChatRequestMessage[]
-): any[] {
-  const out: any[] = [];
+): { history: InstructTurn[]; user: string } {
+  const turns: InstructTurn[] = [];
+
   for (const m of messages) {
     const text = m.content
       .map((part: any) => {
@@ -33,40 +47,42 @@ function toAgentMessages(
       .join("")
       .trim();
     if (!text) continue;
-    const role =
-      m.role === vscode.LanguageModelChatMessageRole.Assistant
-        ? "assistant"
-        : "user";
-    out.push({ role, content: text });
+    turns.push({
+      role:
+        m.role === vscode.LanguageModelChatMessageRole.Assistant
+          ? "assistant"
+          : "user",
+      content: text,
+    });
   }
-  return out;
+
+  // Sista användarturen är frågan; resten är historik. Slutar listan på ett
+  // assistentsvar finns ingen fråga att svara på.
+  const lastUser = [...turns].reverse().find((t) => t.role === "user");
+  const history = turns.slice(0, turns.lastIndexOf(lastUser ?? turns[0]));
+  return { history, user: lastUser?.content ?? "" };
 }
 
 export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
   const provider: vscode.LanguageModelChatProvider = {
     async provideLanguageModelChatInformation(_options, _token) {
-      const backend = chatBackend();
-      const cfg = vscode.workspace.getConfiguration("freya");
-      const id = backend === "ollama" ? "freya-ollama" : "freya-workersai";
-      const modelName =
-        backend === "ollama"
-          ? cfg.get<string>("chat.ollamaModel") || "qwen2.5-coder:14b"
-          : cfg.get<string>("chat.workersAiModel") ||
-            "@cf/qwen/qwen3-30b-a3b-fp8";
-
+      const modelName = instructState().endpoint?.modelName ?? "Qwen2.5-Coder-3B-Instruct";
       return [
         {
-          id,
-          name: `Freya (${modelName})`,
+          id: "freya-local-instruct",
+          name: "Freya (local 3B)",
           family: "freya",
           version: "1",
-          maxInputTokens: 24000,
-          maxOutputTokens: 8000,
-          capabilities: { toolCalling: true, imageInput: false },
-          isBYOK: true,
+          // 3B kör med 8192 tokens kontext (freya.instruct.contextSize).
+          // Siffrorna här ska spegla det -- workbenchen trimmar kontext mot
+          // dem, och ett för högt tal ger avhuggna svar i stället för trimmade.
+          maxInputTokens: 6000,
+          maxOutputTokens: 1000,
+          capabilities: { toolCalling: false, imageInput: false },
+          isBYOK: false,
           isDefault: true,
           isUserSelectable: true,
-          detail: backend === "ollama" ? "Local (Ollama)" : "Cloudflare Workers AI",
+          detail: `Local, on this machine · ${modelName}`,
         } satisfies vscode.LanguageModelChatInformation,
       ];
     },
@@ -78,44 +94,39 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
       progress,
       token
     ) {
-      // Providern är REGISTRERAD även i en obetrodd mapp -- utan en registrerad
-      // vscode.lm-modell avvisas chat-requesten med "Language model unavailable"
-      // innan den når participanten, och då blir pausbeskedet där osynligt.
-      // Men den SVARAR inte: att skicka innehåll ur en mapp användaren inte
-      // litar på till moln eller Ollama är precis vad grinden ska hindra.
-      if (!isTrusted()) {
-        progress.report(new vscode.LanguageModelTextPart(AGENT_PAUSED_TEXT));
+      // INGEN TRUST-GRIND. Den gamla providern vägrade svara i en obetrodd
+      // mapp, och det var rätt då: svaret gick till molnet eller till en
+      // Ollama-instans vi inte startat. Nu går det till en process vi själva
+      // startat på 127.0.0.1 med innehåll användaren själv skrev in. Det finns
+      // inget att läcka.
+      if (!instructAvailable()) {
+        progress.report(new vscode.LanguageModelTextPart(INSTRUCT_MISSING));
         return;
       }
 
-      const { provider: model, problem } = await createChatProvider(ctx);
-      if (!model) {
-        progress.report(
-          new vscode.LanguageModelTextPart(problem ?? "No model configured.")
-        );
+      const { history, user } = toTurns(messages);
+      if (!user) {
         return;
       }
 
-      const agentMessages = toAgentMessages(messages);
-      let streamed = false;
-
-      // Inga verktyg här. Verktyg hör till agent-loopen i participant.ts.
-      const res = await model.send(agentMessages, [], (chunk) => {
-        if (!token.isCancellationRequested) {
-          streamed = true;
-          progress.report(new vscode.LanguageModelTextPart(chunk));
-        }
-      });
-
-      // Providers utan streaming-stöd lämnar allt i ett textblock på slutet.
-      if (!streamed) {
-        const text = res.content
-          .filter((b: any) => b.type === "text")
-          .map((b: any) => b.text)
-          .join("");
-        if (text) {
-          progress.report(new vscode.LanguageModelTextPart(text));
-        }
+      const ac = new AbortController();
+      const sub = token.onCancellationRequested(() => ac.abort());
+      try {
+        await instructOneShot({
+          system: GUIDE_SYSTEM,
+          history,
+          user,
+          maxTokens: 1000,
+          temperature: 0.3,
+          signal: ac.signal,
+          onDelta: (chunk) => {
+            if (!token.isCancellationRequested) {
+              progress.report(new vscode.LanguageModelTextPart(chunk));
+            }
+          },
+        });
+      } finally {
+        sub.dispose();
       }
     },
 

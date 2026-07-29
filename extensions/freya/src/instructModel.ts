@@ -39,11 +39,22 @@ export {
   stripCodeFences,
 } from "./instructText.js";
 
+export interface InstructTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface InstructOptions {
   /** Systeminstruktionen. Håll den stram -- 3B tappar långa regelverk. */
   system: string;
   /** Användarens tur. Kod och instruktion, inget mer. */
   user: string;
+  /**
+   * Tidigare turer, för chatt-lanen. Bryter INTE ett-skotts-regeln: en
+   * chattur är fortfarande EN request som ger EN text tillbaka. Regeln
+   * förbjuder loopen och verktygen, inte att modellen får se vad som sagts.
+   */
+  history?: readonly InstructTurn[];
   maxTokens?: number;
   /** Default 0. Höj bara där variation faktiskt är önskad. */
   temperature?: number;
@@ -83,6 +94,7 @@ export async function instructOneShot(
     const body = {
       messages: [
         { role: "system", content: opts.system },
+        ...(opts.history ?? []),
         { role: "user", content: opts.user },
       ],
       max_tokens: opts.maxTokens ?? DEFAULT_MAX_TOKENS,

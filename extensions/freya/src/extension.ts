@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { registerParticipant } from "./participant.js";
+import { registerGuideChat } from "./guideChat.js";
 import { registerLanguageModel } from "./languageModel.js";
 import { registerAutocomplete } from "./autocomplete.js";
 import {
@@ -59,7 +59,9 @@ export function activate(ctx: vscode.ExtensionContext): void {
   // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
   // chat-request med "Language model unavailable" innan Freyas handler nås.
   registerLanguageModel(ctx);
-  registerParticipant(ctx);
+  // Chat-lanen är den LOKALA 3B-guiden. Agent-loopen i participant.ts är
+  // vilande och registreras inte -- se FAS R och filhuvudet där.
+  registerGuideChat(ctx);
   registerAutocomplete(ctx);
   registerNextEdit(ctx);
   registerSyntaxFix(ctx);

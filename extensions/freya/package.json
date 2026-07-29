@@ -41,10 +41,9 @@
         "id": "tungsten.freya",
         "name": "freya",
         "fullName": "Freya",
-        "description": "What should Freya do?",
+        "description": "Ask about the editor, its settings and keybinds -- or a small coding question",
         "isDefault": true,
         "modes": [
-          "agent",
           "ask"
         ]
       }
