@@ -75,9 +75,48 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
           name: "Freya (local 3B)",
           family: "freya",
           version: "1",
-          // 3B kör med 8192 tokens kontext (freya.instruct.contextSize).
-          // Siffrorna här ska spegla det -- workbenchen trimmar kontext mot
-          // dem, och ett för högt tal ger avhuggna svar i stället för trimmade.
+          // ─────────────────────────────────────────────────────────────────
+          // ÖPPET FEL: DE HÄR TVÅ TALEN ÄR FÖR STORA FÖR MODELLEN VI SKICKAR.
+          //
+          // Det stod tidigare här att "3B kör med 8192 tokens kontext
+          // (freya.instruct.contextSize)" och att siffrorna ska spegla det.
+          // Premissen är fel. Granite-3B-Code-Instruct-2k är tränad på 2048
+          // tokens, och llama-server KAPAR till den gränsen -- ur serverns egen
+          // logg vid uppstart, med --ctx-size 8192:
+          //
+          //   W llama_context: n_ctx_seq (8192) > n_ctx_train (2048)
+          //     -- possible training context overflow
+          //   W srv load_model: the slot context (8192) exceeds the training
+          //     context of the model (2048) - capping
+          //   I srv load_model: initializing, n_slots = 4, n_ctx_slot = 2048
+          //
+          // Inställningen på 8192 är alltså inte bara optimistisk, den är
+          // ouppnåelig med den här modellen. Och följden är VÄRRE än den
+          // avhuggning som den gamla kommentaren oroade sig för: llama-server
+          // trimmar inte, den vägrar. Uppmätt mot ett riktigt förstagångsbygge:
+          //
+          //   POST /completion, 5601 tokens prompt  ->  HTTP 400
+          //   {"error":{"message":"request (5601 tokens) exceeds the available
+          //     context size (2048 tokens)","type":"exceed_context_size_error"}}
+          //
+          // 5601 ligger UNDER maxInputTokens 6000. Workbenchen trimmar alltså
+          // till ett tal den tror är lagligt, och får ett hårt fel tillbaka.
+          //
+          // KONTROLLERAT ATT DET INTE ÄR VÅRA FLAGGOR: `--parallel 1` ger
+          // n_slots = 1 men fortfarande n_ctx_slot = 2048, och FIM-lanen med
+          // --ctx-size 4096 får 4096 per slot (1.5B:n är tränad på mer). Det är
+          // modellens träningskontext som sätter taket, inget vi konfigurerar.
+          //
+          // ÅTGÄRDEN ÄR INTE SKRIVEN HÄR MED FLIT, för det är två olika beslut:
+          //   (a) gör talen sanna -- ca 1400 in / 600 ut ryms i 2048. Ärligt,
+          //       men det halverar mer än en fjärdedel av det chatten lovar.
+          //   (b) byt till en Granite-variant med större kontext (8k/128k
+          //       finns). Då byts också GGUF:en i R2, den pinnade sha256:n och
+          //       hela den verifieringskedjan -- alltså ett eget arbetspass.
+          // Talen står kvar orörda tills valet är gjort, så att ingen tror att
+          // problemet är löst av att en konstant flyttats utan ett packat bygge
+          // bakom sig.
+          // ─────────────────────────────────────────────────────────────────
           maxInputTokens: 6000,
           maxOutputTokens: 1000,
           capabilities: { toolCalling: false, imageInput: false },

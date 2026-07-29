@@ -285,7 +285,7 @@
         "freya.instruct.enabled": {
           "type": "boolean",
           "default": true,
-          "description": "Use the embedded 3B instruct model (llama.cpp + Qwen2.5-Coder-3B-Instruct) for Explain, Inline edit, Fix, Generate tests, the refactor actions and the built-in guide chat. Off = those features say they are unavailable."
+          "description": "Use the embedded 3B instruct model (llama.cpp + Granite-3B-Code-Instruct) for Explain, Inline edit, Fix, Generate tests, the refactor actions and the built-in guide chat. Off = those features say they are unavailable."
         },
         "freya.instruct.port": {
           "type": "number",
