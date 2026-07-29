@@ -113,6 +113,12 @@
         "icon": "$(sparkle)"
       },
       {
+        "command": "freya.semanticFix",
+        "title": "Fix this error",
+        "category": "Freya",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "freya.syntaxFix.dismiss",
         "title": "Dismiss the suggested syntax fix",
         "category": "Freya"

@@ -27,6 +27,7 @@ import {
   INSTRUCT_MISSING,
   reindent,
 } from "./instructModel.js";
+import { confirmViaDiff } from "./preview.js";
 
 /** Taket för hur stort fragment som skickas. 3B har 8192 tokens totalt. */
 const MAX_FRAGMENT_CHARS = 6000;
@@ -58,80 +59,7 @@ function userPrompt(
   ].join("\n");
 }
 
-/**
- * Förhandsvisningen är en riktig diff-editor och inte en modal med text i.
- *
- * Skälet är praktiskt: en modal `detail`-sträng radbryts inte som kod, går
- * inte att bläddra i och saknar syntaxfärgning. En omskriven funktion på
- * trettio rader är oläslig där. Diff-editorn är ytan användaren redan läser
- * ändringar i.
- */
-const PREVIEW_SCHEME = "freya-inline-edit";
-
-/** Innehållet bakom preview-URI:erna. Rensas när diffen stängts. */
-const previewContent = new Map<string, string>();
-
-class PreviewProvider implements vscode.TextDocumentContentProvider {
-  provideTextDocumentContent(uri: vscode.Uri): string {
-    return previewContent.get(uri.toString()) ?? "";
-  }
-}
-
-let previewCounter = 0;
-
-/**
- * Öppnar diffen och frågar. Returnerar true om användaren godkände.
- *
- * Diffen stängs alltid innan vi återvänder -- annars blir det en flik kvar
- * som visar en ändring som antingen redan är gjord eller aldrig blev av.
- */
-async function confirmViaDiff(
-  before: string,
-  after: string,
-  languageId: string,
-  title: string
-): Promise<boolean> {
-  const id = ++previewCounter;
-  // Filändelsen i sökvägen är det som ger diffen syntaxfärgning.
-  const suffix = languageId ? `.${languageId}` : "";
-  const left = vscode.Uri.parse(`${PREVIEW_SCHEME}:/current-${id}${suffix}`);
-  const right = vscode.Uri.parse(`${PREVIEW_SCHEME}:/freya-${id}${suffix}`);
-  previewContent.set(left.toString(), before);
-  previewContent.set(right.toString(), after);
-
-  try {
-    await vscode.commands.executeCommand(
-      "vscode.diff",
-      left,
-      right,
-      title,
-      { preview: true }
-    );
-
-    const answer = await vscode.window.showInformationMessage(
-      "Freya rewrote the selection.",
-      { modal: false },
-      "Apply",
-      "Discard"
-    );
-    return answer === "Apply";
-  } finally {
-    previewContent.delete(left.toString());
-    previewContent.delete(right.toString());
-    // Stäng diff-fliken. activeTextEditor är inte satt för en diff, så vi går
-    // via kommandot i stället för att leta upp den.
-    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
-  }
-}
-
 export function registerInlineEdit(ctx: vscode.ExtensionContext): void {
-  ctx.subscriptions.push(
-    vscode.workspace.registerTextDocumentContentProvider(
-      PREVIEW_SCHEME,
-      new PreviewProvider()
-    )
-  );
-
   ctx.subscriptions.push(
     vscode.commands.registerCommand("freya.inlineEdit", async () => {
       const editor = vscode.window.activeTextEditor;
@@ -218,12 +146,13 @@ export function registerInlineEdit(ctx: vscode.ExtensionContext): void {
         return;
       }
 
-      const approved = await confirmViaDiff(
-        fragment,
-        rewritten,
-        editor.document.languageId,
-        `Freya: ${instruction.trim()}`
-      );
+      const approved = await confirmViaDiff({
+        before: fragment,
+        after: rewritten,
+        languageId: editor.document.languageId,
+        title: `Freya: ${instruction.trim()}`,
+        question: "Freya rewrote the selection.",
+      });
       if (!approved) {
         return;
       }

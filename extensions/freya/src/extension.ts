@@ -22,6 +22,8 @@ import { registerExplain } from "./explain.js";
 import { registerNextEdit } from "./fim/nextEdit.js";
 import { registerSyntaxFix } from "./fim/syntaxFix.js";
 import { registerInlineEdit } from "./inlineEdit.js";
+import { registerSemanticFix } from "./semanticFix.js";
+import { registerPreview } from "./preview.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
   // ALLT NEDAN REGISTRERAS ÄVEN I EN OBETRODD MAPP. Tillägget deklarerar
@@ -61,7 +63,12 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerSecretsGuard(ctx);
   registerStagedSecretScan(ctx);
   registerExplain(ctx);
+  // Diff-förhandsvisningen måste vara registrerad innan någon yta vill visa
+  // en. Den är den ENDA vägen från "modellen föreslog något" till "filen
+  // ändrades" -- se preview.ts.
+  registerPreview(ctx);
   registerInlineEdit(ctx);
+  registerSemanticFix(ctx);
 
   // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
   // är nere, och läget syns som en statusrad bara när något saknas.
