@@ -73,8 +73,40 @@ export const COMPLETION_DOWNLOAD: DownloadableModel = {
   label: "Qwen2.5-Coder-1.5B (0.9 GB)",
 };
 
-/** Standardvärden. Ändras av användaren via freya.runtime.baseUrl. */
-const DEFAULT_BASE_URL = "https://huggingface.co";
+/**
+ * Standardvärdet. Ändras av användaren via freya.runtime.baseUrl.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR TUNGSTENS EGEN BUCKET OCH INTE HUGGINGFACE.
+ *
+ * Den lilla installern (D2) måste kunna hämta 3B:n på en ren maskin utan att
+ * användaren konfigurerar något. Den vägen behöver alltså en default som
+ * FAKTISKT fungerar, och den ska peka på vikter vi har kontrollerat själva:
+ * objektet i bucketen är byte-för-byte samma fil som buntas i D1, verifierat
+ * genom att hasha objektet på serversidan efter uppladdningen.
+ *
+ *   lokal fil    2 132 498 112 B   sha256 5bd783ab…f252a8ff
+ *   R2-objektet  2 132 498 112 B   sha256 5bd783ab…f252a8ff
+ *
+ * HuggingFace fungerar fortfarande, och SÖKVÄGEN under basen är med flit
+ * identisk med deras (`<repo>/resolve/main/<fil>`). Att byta tillbaka är
+ * därför bara att sätta om den här inställningen till https://huggingface.co
+ * -- ingen ombyggnad, ingen kodändring. Det var själva poängen med att välja
+ * den nyckeln i bucketen.
+ *
+ * Skälet att inte lita på HuggingFace som default är inte misstro mot dem utan
+ * att vi inte STYR filen där: ett nytt upload i deras repo ändrar hashen, och
+ * då vägrar installern filen -- korrekt, men användaren sitter med en 3B som
+ * inte går att hämta.
+ *
+ * KÄNT FÖRBEHÅLL: pub-*.r2.dev är Cloudflares utvecklings-URL och den är
+ * hastighetsbegränsad; Cloudflare avråder från den för produktionstrafik. Den
+ * är rätt val NU (stabil, publik, kräver ingen auth), men den dagen hämtningen
+ * blir varm hör den hemma på en egen domän framför samma bucket. Byt då bara
+ * den här strängen -- nyckeln under basen är oförändrad.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+const DEFAULT_BASE_URL = "https://pub-7ae5d28171f348d19d1b8f1db9ab7253.r2.dev";
 
 function cfg() {
   return vscode.workspace.getConfiguration("freya");

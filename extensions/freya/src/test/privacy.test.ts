@@ -197,19 +197,65 @@ suite('Privacy: modellhamtningen ar konfigurerbar och verifierad', () => {
 		);
 	});
 
+	// Tungstens EGEN release-bucket. Publik, anonymt lasbar, och innehallet ar
+	// pinnat av sha256:n nedan -- verifierat genom att hasha objektet pa
+	// serversidan efter uppladdningen, inte genom att lita pa att det lag ratt.
+	const RELEASE_HOST = 'https://pub-7ae5d28171f348d19d1b8f1db9ab7253.r2.dev';
+
 	test('KRITISKT: ingen intern eller privat adress ar hardkodad', () => {
+		// VAD DET HAR TESTET SKYDDAR MOT, och vad som andrades.
+		//
+		// Tidigare kravdes att VARJE hardkodad URL var huggingface.co, och
+		// strangen 'r2.dev' var svartlistad rakt av. Det var ratt sa lange
+		// defaulten var HuggingFace: da kunde en r2.dev-adress i filen bara
+		// betyda att nagons privata spegel smugit in.
+		//
+		// Nu ar defaulten Tungstens EGEN publika bucket, av skalet som star i
+		// modelDownload.ts: den lilla installern maste kunna hamta 3B:n pa en
+		// ren maskin, och vikterna dar ar samma fil som buntas i D1.
+		//
+		// Skyddet ar darfor inte borttaget utan SKARPT: r2.dev ar fortfarande
+		// forbjudet, med undantag for exakt den har bucketen. En annan
+		// pub-*.r2.dev-adress faller precis som forr.
 		const src = downloaderSource();
 		for (const m of src.matchAll(/https?:\/\/[^\s"'`)]+/g)) {
 			const url = m[0];
 			assert.ok(
-				/^https:\/\/huggingface\.co/.test(url),
-				`hardkodad adress som inte ar den publika modellvarden: ${url}`
+				/^https:\/\/huggingface\.co/.test(url) || url.startsWith(RELEASE_HOST),
+				`hardkodad adress som varken ar den publika modellvarden eller ` +
+				`Tungstens release-bucket: ${url}`
 			);
 		}
-		// Vanliga former for interna varden.
-		for (const bad of ['.internal', '.corp', '.local', '10.', '192.168.', 'r2.dev', 'amazonaws']) {
+		// Vanliga former for interna varden. amazonaws och de privata natverken
+		// har ingen legitim plats i filen alls.
+		for (const bad of ['.internal', '.corp', '.local', '10.', '192.168.', 'amazonaws']) {
 			assert.ok(!src.includes(bad), `hardkodad intern adress: ${bad}`);
 		}
+		// r2.dev far forekomma, men BARA som var egen bucket.
+		for (const m of src.matchAll(/https?:\/\/[^\s"'`)]*r2\.dev[^\s"'`)]*/g)) {
+			assert.ok(
+				m[0].startsWith(RELEASE_HOST),
+				`en annan r2.dev-adress an release-bucketen: ${m[0]}`
+			);
+		}
+	});
+
+	test('default-basen ar den bucket som faktiskt ar verifierad', () => {
+		// Halla ihop tva sanningar som annars glider isar: konstanten i koden och
+		// defaulten i manifestet. Ett bygge dar de skiljer sig hamtar fran en
+		// annan host an den som testades.
+		const src = downloaderSource();
+		const inCode = /const DEFAULT_BASE_URL = "([^"]+)"/.exec(src)?.[1];
+		const manifestDefault = JSON.parse(
+			fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')
+		).contributes.configuration.properties['freya.runtime.baseUrl'].default;
+
+		assert.strictEqual(inCode, RELEASE_HOST, 'DEFAULT_BASE_URL ar inte release-bucketen');
+		assert.strictEqual(
+			manifestDefault,
+			RELEASE_HOST,
+			'manifestets default och DEFAULT_BASE_URL pekar pa olika hostar'
+		);
 	});
 
 	test('KRITISKT: storlek OCH sha256 kontrolleras innan filen tas i bruk', () => {

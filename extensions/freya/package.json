@@ -278,8 +278,8 @@
         },
         "freya.runtime.baseUrl": {
           "type": "string",
-          "default": "https://huggingface.co",
-          "markdownDescription": "Where Freya downloads a model from when it is not bundled with your build. Point this at your own mirror (R2, an internal host, a file server) and nothing needs rebuilding. The path under this base and the SHA-256 are fixed in the extension; a download that does not match the expected size and checksum is deleted.",
+          "default": "https://pub-7ae5d28171f348d19d1b8f1db9ab7253.r2.dev",
+          "markdownDescription": "Where Freya downloads a model from when it is not bundled with your build. Defaults to Tungsten's own release bucket, which serves byte-for-byte the same weights that ship inside the bundled installer. Point this at your own mirror (an internal host, a file server, or `https://huggingface.co`) and nothing needs rebuilding. The path under this base and the SHA-256 are fixed in the extension; a download that does not match the expected size and checksum is deleted.",
           "scope": "application"
         },
         "freya.instruct.enabled": {
