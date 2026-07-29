@@ -1,13 +1,22 @@
 ## The chat
 
 Freya is the default participant in the chat panel — you do not need to type
-`@freya`.
+`@freya`. `Ctrl+Alt+I` opens it.
 
-- `Ctrl+Alt+I` opens the chat.
-- The agent has six tools: read, write and edit files, list and search the
-  workspace, and run commands. Commands always require confirmation first.
-- Freya never uses `vscode.lm.tools`, so the workbench automation tools are out
-  of the model's reach.
+It is a **guide to the editor**, running on the embedded 3B model. Ask it about
+settings, keybinds, what a feature does, or a small coding question.
 
-To run in the cloud instead, set `freya.chat.backend` to `workersai` and run
-**Freya: Set Cloudflare keys**. Autocomplete stays local either way.
+It does not read your files, it does not write files, and it does not run
+commands. That is deliberate: real code changes belong on the surfaces that
+already have your selection, the error message and a diff to approve.
+
+| You want to | Use |
+| --- | --- |
+| Change the selected code | `Ctrl+K Ctrl+I` — rewrite with an instruction |
+| Apply a common refactoring | `Ctrl+K Ctrl+R` — refactor presets |
+| Fix an error | Click the lightbulb on it and pick the Freya fix |
+| Understand some code | **Freya: Explain selected code** |
+| Get tests | **Freya: Generate tests for this code** |
+
+Every one of them shows you a diff or a preview before anything in your file
+changes.

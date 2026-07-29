@@ -54,9 +54,11 @@ function safePath(workdir: string, p: string): string {
 }
 
 // Filer som kan innehålla hemligheter — read_file vägrar läsa dessa.
-// Exporterad så att hemlighets-skannern (../secrets.ts) använder SAMMA
-// definition i stället för en egen kopia som glider isär från den här.
-export const SECRET_FILE_PATTERN = /(^|[\\/])(\.env(\.|$)|\.dev\.vars$|[^\\/]+\.pem$)/i;
+// Definitionen bor i ../secretFiles.ts så att hemlighets-skannern kan dela den
+// utan att dra in den HÄR (vilande) filen i den aktiva modulgrafen. Läs
+// filhuvudet där; privacy-testet är beroende av uppdelningen.
+export { SECRET_FILE_PATTERN } from "../secretFiles.js";
+import { SECRET_FILE_PATTERN } from "../secretFiles.js";
 
 const READ_FILE_MAX_LINES = 2000;
 const READ_FILE_MAX_CHARS = 60_000;

@@ -50,18 +50,8 @@
     ],
     "commands": [
       {
-        "command": "freya.setKeys",
-        "title": "Set Cloudflare keys",
-        "category": "Freya"
-      },
-      {
-        "command": "freya.clearKeys",
-        "title": "Delete stored keys",
-        "category": "Freya"
-      },
-      {
         "command": "freya.showBackend",
-        "title": "Show which model is in use",
+        "title": "Show which models are in use",
         "category": "Freya"
       },
       {
@@ -221,8 +211,8 @@
           },
           {
             "id": "freya.setup.models",
-            "title": "Heavier work: cloud or your own large model",
-            "description": "Agent work across several files wants a larger model. Either Cloudflare Workers AI with your own keys, or your own Ollama if you have the hardware.\n[Set Cloudflare keys](command:freya.setKeys)",
+            "title": "Instructions go to the second local model",
+            "description": "Explaining code, rewriting a selection, fixing an error, generating tests and the chat all run on a 3B instruct model that ships with the app. It loads on first use and releases the memory when idle.\n[Rewrite a selection](command:freya.inlineEdit)",
             "media": {
               "markdown": "media/walkthrough-models.md"
             }
@@ -241,21 +231,6 @@
     "configuration": {
       "title": "Freya",
       "properties": {
-        "freya.chat.backend": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "workersai",
-            "ollama"
-          ],
-          "enumDescriptions": [
-            "Decide automatically: cloud if Cloudflare keys exist, otherwise your local Ollama.",
-            "Cloudflare Workers AI. Requires your own keys (BYOK).",
-            "Local Ollama. Optional extra; requires that you pulled a large model."
-          ],
-          "default": "auto",
-          "description": "HEAVY lane: which model Freya's chat/agent uses. The light lane is controlled by freya.light.backend."
-        },
         "freya.light.backend": {
           "type": "string",
           "enum": [
@@ -267,17 +242,7 @@
             "Your own Ollama. Use this if you would rather run a different small model."
           ],
           "default": "embedded",
-          "description": "LIGHT lane: autocomplete, commit messages and code explanations."
-        },
-        "freya.chat.workersAiModel": {
-          "type": "string",
-          "default": "@cf/qwen/qwen3-30b-a3b-fp8",
-          "description": "Model ID on Workers AI."
-        },
-        "freya.chat.ollamaModel": {
-          "type": "string",
-          "default": "qwen2.5-coder:14b",
-          "description": "Ollama model for chat/agent."
+          "description": "COMPLETION lane: inline completion, next-edit prediction, the ghost-text syntax fix and commit messages. The instruct lane (explain, rewrite, fix, tests, chat) is always the embedded 3B."
         },
         "freya.local.enabled": {
           "type": "boolean",
@@ -329,22 +294,10 @@
           "default": true,
           "description": "Warn about secrets on paste and before commit. Runs entirely locally (pattern matching, no model)."
         },
-        "freya.commit.model": {
-          "type": "string",
-          "default": "",
-          "description": "Ollama model that writes commit messages. Empty = same as freya.chat.ollamaModel. Must be an instruct model, not a base model."
-        },
-        "freya.chat.maxSteps": {
-          "type": "number",
-          "default": 25,
-          "minimum": 1,
-          "maximum": 100,
-          "description": "Maximum number of tool steps per question."
-        },
         "freya.ollama.url": {
           "type": "string",
           "default": "http://localhost:11434",
-          "description": "Address of Ollama. Used by both chat and autocomplete."
+          "description": "Address of Ollama. Only used when freya.light.backend is set to ollama; the default build needs nothing installed."
         },
         "freya.autocomplete.enabled": {
           "type": "boolean",

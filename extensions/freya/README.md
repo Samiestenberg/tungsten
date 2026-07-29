@@ -1,58 +1,108 @@
 # Freya
 
-Tungsten's built-in coding agent. Local-first, BYOK, no telemetry.
+Tungsten's built-in AI. Two local models, no account, no telemetry, no network.
 
 ## The division of labour
 
-Freya has **two lanes**, and that is the whole design:
+Freya has **two lanes**, and that is the whole design. Both ship inside the app.
 
-| | Light lane | Heavy lane |
+| | Completion lane | Instruct lane |
 | --- | --- | --- |
-| What | autocomplete, commit messages, code explanations | agent across several files, large refactorings, deep reasoning |
-| Model | **embedded** Qwen2.5-Coder-1.5B, served by llama.cpp inside the app | Cloudflare Workers AI (qwen3) or your own Ollama |
-| Requires | nothing — ships with the app | your own keys, or a large model you pulled yourself |
-| Cost | zero, offline | cloud, or your own hardware |
-| Setting | `freya.light.backend` (default `embedded`) | `freya.chat.backend` (default `auto`) |
+| Model | Qwen2.5-Coder-**1.5B base** | Qwen2.5-Coder-**3B instruct** |
+| Port | `127.0.0.1:11435` | `127.0.0.1:11436` |
+| Lifetime | loaded at startup, stays warm | loads on first use, released after 5 min idle |
+| What | inline completion, whole blocks, return values, type signatures, next-edit prediction, ghost-text syntax fix, commit messages | explain, rewrite a selection, fix a semantic error, generate tests, refactor presets, name things, second opinion, the chat |
+| Frequency | every keystroke | when you ask |
+| Setting | `freya.light.backend` (default `embedded`) | `freya.instruct.enabled` (default `true`) |
 
-This means the app **works straight out of the download**: with no Ollama and no
-cloud keys you still get autocomplete, commit messages and explanations.
-A large local model is an **option**, never a requirement.
+The line between them is not size. It is this question:
 
-`freya.chat.backend: auto` picks cloud when Cloudflare keys exist and your local
-Ollama otherwise. The status bar at the bottom right shows which model answers in
-each lane.
+> Do I have to write an **instruction**, or is the model just continuing what is
+> already there?
 
-### The embedded model
+Continuation → 1.5B. Instruction → 3B. The line is never blurred to save a
+model: a base model cannot follow an instruction, and an instruct model is worse
+at fill-in-the-middle.
 
-Started as a child process on `127.0.0.1:11435` (never 11434 — that one belongs
-to Ollama) and shut down when Tungsten exits. Measured: ~270 ms per completion,
-8 out of 8 under 600 ms.
+### Why two processes
 
-Licences: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0. See
-`freya-runtime/THIRD-PARTY-NOTICES.txt` in the app's resources.
+`llama-server` takes the model as an argument, so the two lanes are two child
+processes of the same binary on two ports. Sharing a port would mean an
+`/infill` request occasionally landing in the instruct model — which produces
+nonsense, not an error.
+
+The 3B is on-demand because of memory: 940 MB + 2.0 GB resident at the same time
+leaves no room for the editor on an 8 GB machine.
+
+Licences: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0, Qwen2.5-Coder-3B-Instruct
+**Qwen Research License** (not Apache-2.0 — see
+`freya-runtime/THIRD-PARTY-NOTICES.txt`, and `build/freya/fetchLocalRuntime.ts`
+for the one constant to change for a commercial build).
 
 ### The optional Ollama path
 
+Only for completion, and only if you want a different small model:
+
 ```
-ollama pull qwen2.5-coder:14b        # heavy lane, optional
-ollama pull qwen2.5-coder:1.5b-base  # only if you set light.backend=ollama
+ollama pull qwen2.5-coder:1.5b-base   # only if you set light.backend=ollama
 ```
 
-| Model | Surface | Requirement |
+It must be a **base** model. An instruct model cannot do FIM and answers with
+prose instead of code. The instruct lane is always the embedded 3B — there is no
+Ollama path for it, because "no installation" is the point.
+
+## Two-step debugging
+
+Errors are split by what kind of error they are, and the split is the reason it
+feels fast:
+
+| | Syntax error (missing `}`, `,`, `;`) | Semantic error (types, logic) |
 | --- | --- | --- |
-| `qwen2.5-coder:14b` | chat / agent | Needs to handle tool calls. |
-| `qwen2.5-coder:1.5b-base` | inline autocomplete | Must be a **base** model. An instruct model cannot do FIM and answers with prose instead of code. |
+| Model | 1.5B, fill-in-the-middle | 3B instruct |
+| When | while you type | when you click the error |
+| Shown as | faint ghost text, Tab to accept | a diff to approve |
+| Measured | 171-230 ms | ~6 s |
 
-When Ollama is needed but does not answer, Freya says so in the chat panel with
-the exact `ollama pull` required, in the status bar, and via **Freya: Check that
-Ollama and the models are present**. Freya never installs Ollama or any model
-for you.
+The parser already knows exactly what is missing in the first case, so there is
+nothing to reason about. The second case needs someone to understand the types
+and what the last change was trying to do — so the recent `git diff` is sent
+along with the file.
+
+The boundary lives in one place (`src/fim/syntaxSignal.ts`) and both sides ask
+the same function, so it cannot drift apart.
+
+## Nothing is applied without you
+
+Every surface that changes code shows a diff first (`src/preview.ts` is the only
+route from "the model suggested something" to "the file changed"). Applying also
+re-checks that the text has not changed since the diff was opened.
+
+| Surface | Keybinding |
+| --- | --- |
+| Rewrite selection with an instruction | `Ctrl+K Ctrl+I` |
+| Refactor presets | `Ctrl+K Ctrl+R` |
+| Fix a semantic error | lightbulb on the error |
+| Accept the ghost-text syntax fix | `Tab` (only while it is visible) |
+
+`Ctrl+K Ctrl+I` rather than a bare `Ctrl+K`: `Ctrl+K` is the prefix for VS Code's
+whole chord family, and taking it would remove all of them.
+
+## The chat
+
+A **guide to the editor**, on the local 3B. It answers questions about settings,
+keybinds and features, and small coding questions. It cannot read files, write
+files or run commands, and it has no tools.
+
+That is deliberate. A 3B positioned as an autonomous coding agent promises more
+than it can keep and pulls you to the wrong surface; real changes belong where
+the selection, the error and the diff already are.
 
 ## Commit messages
 
-**Freya: Write commit message** (the sparkle button in the Source Control view)
-reads `git diff --staged`, drafts a message with the local model and puts it in
-the commit box. You edit and commit yourself — Freya never commits.
+**Freya: Write commit message** (the sparkle button in Source Control) reads
+`git diff --staged`, drafts a message on the 1.5B (few-shot) and falls back to
+the 3B if the 1.5B is missing. Both are local. You edit and commit yourself —
+Freya never commits.
 
 ## Secrets
 
@@ -68,8 +118,8 @@ tokens, JWTs, and secrets in assignments and environment variables. Placeholders
   secrets** does the same on demand.
 
 Only added lines are scanned — a removed secret is a good thing. `.env`,
-`.dev.vars` and `.pem` are not warned about: that is where secrets *belong* (the
-same `SECRET_FILE_PATTERN` that `read_file` uses). They are scanned in a commit,
+`.dev.vars` and `.pem` are not warned about: that is where secrets *belong*
+(`SECRET_FILE_PATTERN` in `src/secretFiles.ts`). They are scanned in a commit,
 because that is where they do damage.
 
 Note: VS Code's git extension has no pre-commit hook for extensions, so Freya
@@ -79,50 +129,53 @@ cannot block the Commit button itself. It stops the flows it owns.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `freya.chat.backend` | `auto` | HEAVY lane: `auto` (cloud if keys, otherwise Ollama), `workersai` or `ollama`. |
-| `freya.light.backend` | `embedded` | LIGHT lane: `embedded` (embedded 1.5B) or `ollama`. |
-| `freya.local.enabled` | `true` | Use the embedded model at all. |
-| `freya.local.port` | `11435` | Port for the embedded server. Never 11434. |
-| `freya.ollama.url` | `http://localhost:11434` | Used by both chat and autocomplete. |
-| `freya.chat.ollamaModel` | `qwen2.5-coder:14b` | Chat model in Ollama. |
-| `freya.autocomplete.model` | `qwen2.5-coder:1.5b-base` | FIM model. |
+| `freya.light.backend` | `embedded` | Completion lane: `embedded` or your own `ollama`. |
+| `freya.local.enabled` | `true` | Use the embedded 1.5B at all. |
+| `freya.local.port` | `11435` | Port for the completion server. Never 11434. |
+| `freya.local.contextSize` | `4096` | Context window for the 1.5B. |
+| `freya.instruct.enabled` | `true` | Use the embedded 3B at all. |
+| `freya.instruct.port` | `11436` | Port for the instruct server. Never 11434 or 11435. |
+| `freya.instruct.contextSize` | `8192` | Context window for the 3B. |
+| `freya.instruct.idleUnloadMs` | `300000` | Release the 3B after this much quiet. `0` keeps it loaded. |
 | `freya.autocomplete.enabled` | `true` | Inline completion on/off. |
-| `freya.chat.maxSteps` | `25` | Maximum tool steps per question. |
-| `freya.commit.model` | empty = `chat.ollamaModel` | Model for commit messages. Must be an instruct model. |
+| `freya.autocomplete.model` | `qwen2.5-coder:1.5b-base` | FIM model, Ollama path only. |
+| `freya.nextEdit.enabled` | `true` | Predict where the next change goes. |
+| `freya.syntaxFix.enabled` | `true` | Ghost-text guess at a missing `}` or `,`. |
+| `freya.tentative.enabled` | `true` | Guessy completions in catch blocks, regexes and test files. |
+| `freya.ollama.url` | `http://localhost:11434` | Only used when `light.backend` is `ollama`. |
 | `freya.secrets.enabled` | `true` | Secret warnings on/off. |
 
-## Cloud mode (optional)
+## Privacy
 
-`freya.chat.backend` = `workersai` runs the chat against Cloudflare Workers AI
-with your own keys. Run **Freya: Set Cloudflare keys** — they are stored in the
-OS keychain via SecretStorage, never in `settings.json` and never in the repo.
-Autocomplete stays local even then.
+The default build makes **no outbound network requests** for AI. Both models run
+as child processes on `127.0.0.1`, and nothing else is contacted.
 
-Keys are read in this order: SecretStorage → `.env` in the workspace →
-environment variables (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`).
+This is verified, not asserted: `src/test/privacy.test.ts` walks the real import
+graph from `extension.ts` and fails the build if any reachable module mentions
+`CLOUDFLARE_` credentials, contains a URL to anything but `127.0.0.1`/`localhost`,
+or reaches the dormant cloud code.
 
-## Tools
-
-The agent has six tools: `read_file`, `write_file`, `edit_file`, `list_files`,
-`search_files` and `run_command`. `run_command` always requires confirmation
-before anything runs.
-
-Freya talks straight to its own model provider and never uses `vscode.lm` or
-`vscode.lm.tools`. The workbench automation tools (MCP servers, `type_in_page`
-and friends) are therefore not in the model's tool list at all — that is a
-property of the construction, not a filter.
-
-`read_file` refuses to read `.env`, `.dev.vars` and `.pem`
-(`SECRET_FILE_PATTERN` in `src/core/tools.ts`).
+A cloud tier exists in `src/cloud.ts` but is **off**, behind a hard-coded
+constant that no setting can flip, and it is not imported by anything active. It
+never reads any credential while that constant is false. The agent loop it
+belonged to is likewise dormant in `src/participant.ts`.
 
 ## Untrusted folders
 
-Freya is disabled in untrusted folders (`untrustedWorkspaces.supported: false`) —
-it reads and writes files and can run commands, so that is the right default.
+The extension declares `untrustedWorkspaces.supported: "limited"`, so it
+activates and both lanes work in a folder you have not trusted. They only read
+what you selected and talk to a process we started on `127.0.0.1` — there is
+nothing to leak, and the earlier agent that could write files and run commands is
+retired.
 
-In restricted mode VS Code does not activate the extension at all, so Freya
-cannot say anything itself. The chat panel therefore shows the row **"Freya is
-paused in an untrusted folder"** with a **Trust the folder** button. That comes
-from the workbench
-(`src/vs/workbench/contrib/chat/browser/viewsWelcome/tungstenRestrictedModeWelcome.ts`),
-not from this extension.
+What a hostile workspace must not be able to do is redirect **where** text goes
+or **which** binary we start. Those settings are locked from workspace scope:
+
+```
+freya.local.runtimePath   freya.local.port
+freya.instruct.runtimePath  freya.instruct.port
+freya.ollama.url
+```
+
+`src/test/restrictedConfigurations.test.ts` fails if a new `.port`,
+`.runtimePath` or `.url` setting is added without being locked.

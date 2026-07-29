@@ -2,22 +2,14 @@ import * as vscode from "vscode";
 import { registerGuideChat } from "./guideChat.js";
 import { registerLanguageModel } from "./languageModel.js";
 import { registerAutocomplete } from "./autocomplete.js";
-import {
-  clearKeys,
-  promptAndStoreKeys,
-  chatBackend,
-  ollamaUrl,
-  chatModel,
-  autocompleteModel,
-  refreshCloudKeyState,
-} from "./config.js";
+import { autocompleteModel, lightBackend, ollamaUrl } from "./config.js";
 import { initHealthState, refreshHealth } from "./healthState.js";
 import { ollamaGuidance, probeOllama } from "./health.js";
 import { registerCommitMessage } from "./commitMessage.js";
 import { registerSecretsGuard } from "./secretsGuard.js";
 import { registerStagedSecretScan } from "./secretsStaged.js";
-import { initLocalServer } from "./localServer.js";
-import { initInstructServer } from "./instructServer.js";
+import { initLocalServer, localState } from "./localServer.js";
+import { initInstructServer, instructInstalled, instructState } from "./instructServer.js";
 import { registerExplain } from "./explain.js";
 import { registerNextEdit } from "./fim/nextEdit.js";
 import { registerSyntaxFix } from "./fim/syntaxFix.js";
@@ -32,17 +24,22 @@ import { registerPreview } from "./preview.js";
 export function activate(ctx: vscode.ExtensionContext): void {
   // ALLT NEDAN REGISTRERAS ÄVEN I EN OBETRODD MAPP. Tillägget deklarerar
   // untrustedWorkspaces.supported: "limited", så activate() körs direkt när
-  // fönstret öppnas -- tidigare kördes den inte alls, och då startade varken
-  // den inbäddade modellen eller något som kunde förklara varför.
+  // fönstret öppnas -- annars startade varken de inbäddade modellerna eller
+  // något som kunde förklara varför.
   //
-  // Grinden sitter i stället per yta: agenten (participant.ts) och
-  // vscode.lm-svaren (languageModel.ts) vägrar tills mappen litas på och SÄGER
-  // det. Den lätta lanen läser bara och kör på.
+  // TRUST-GRINDEN FÖRSVANN I FAS R, och det var inte en försvagning. Den
+  // fanns för AGENTEN: en loop som skrev filer, körde kommandon och skickade
+  // arbetsytans innehåll till molnet eller till en Ollama vi inte startat. Den
+  // agenten är retirerad. Det som är kvar läser bara det användaren själv
+  // markerat och skickar det till en process vi startat på 127.0.0.1.
+  //
+  // Det som spärren FAKTISKT skyddade -- att en fientlig arbetsyta pekar om
+  // vart texten går eller vilken binär vi startar -- ligger kvar och gäller
+  // BÅDA lanerna: se restrictedConfigurations i package.json.
 
-  // Den inbäddade 1.5B-servern startas FÖRST men utan await: allt lätt
-  // (autocomplete, commit-meddelanden, förklaringar) ska gå mot den, och den
-  // ska vara på väg upp medan resten registreras. Saknas runtime:n faller
-  // anroparna tillbaka på Ollama av sig själva.
+  // Den inbäddade 1.5B-servern startas FÖRST men utan await: allt högfrekvent
+  // (komplettering, next-edit, syntaxfix, commit-rubriker) går mot den, och
+  // den ska vara på väg upp medan resten registreras.
   initLocalServer(ctx, () => void refreshHealth());
 
   // 3B-instruct-lanen får sin livscykel registrerad här men startas INTE nu.
@@ -51,16 +48,11 @@ export function activate(ctx: vscode.ExtensionContext): void {
   // åt editorn på en 8 GB-maskin. Se instructServer.ts.
   initInstructServer(ctx, () => void refreshHealth());
 
-  // Routningen av den TUNGA lanen (auto -> moln om nycklar finns, annars den
-  // valfria Ollama-modellen) behover veta om nycklar finns. chatBackend() ar
-  // synkron, sa svaret cachas har och uppdateras nar nycklarna andras.
-  void refreshCloudKeyState(ctx).then(() => void refreshHealth());
-
   // Ordning spelar roll: utan en registrerad vscode.lm-modell avvisas varje
   // chat-request med "Language model unavailable" innan Freyas handler nås.
   registerLanguageModel(ctx);
   // Chat-lanen är den LOKALA 3B-guiden. Agent-loopen i participant.ts är
-  // vilande och registreras inte -- se FAS R och filhuvudet där.
+  // vilande och registreras inte -- se filhuvudet där och i cloud.ts.
   registerGuideChat(ctx);
   registerAutocomplete(ctx);
   registerNextEdit(ctx);
@@ -80,79 +72,62 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerNameThings(ctx);
   registerCodeReview(ctx);
 
-  // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
-  // är nere, och läget syns som en statusrad bara när något saknas.
+  // MOLN-TIERN REGISTRERAS INTE. cloud.registerCloudCommands() anropas
+  // medvetet inte här: ett kommando som ber om Cloudflare-nycklar hör inte
+  // hemma i en app som lovar att inte prata med molnet, och ett registrerat
+  // kommando syns i paletten oavsett om det gör något. Se cloud.ts.
+
+  // Hälsokoll vid uppstart. Icke-blockerande.
   initHealthState(ctx);
 
-  // Tillägget körs vidare när mappen blir betrodd (supported: "limited"), så
-  // statusraden måste sluta säga "agent paused" av sig själv. Utan detta står
-  // det kvar tills nästa fönster -- och då ser det ut som att knappen inte
-  // gjorde något.
   ctx.subscriptions.push(
-    vscode.workspace.onDidGrantWorkspaceTrust(() => {
-      void refreshHealth();
-    })
-  );
-
-  ctx.subscriptions.push(
-    vscode.commands.registerCommand("freya.setKeys", async () => {
-      await clearKeys(ctx);
-      const ok = await promptAndStoreKeys(ctx);
-      if (ok) {
-        await refreshCloudKeyState(ctx);
-        void refreshHealth();
-        vscode.window.showInformationMessage(
-          "Freya: Cloudflare keys stored in the OS keychain."
-        );
-      }
-    }),
-    vscode.commands.registerCommand("freya.clearKeys", async () => {
-      await clearKeys(ctx);
-      await refreshCloudKeyState(ctx);
-      void refreshHealth();
-      vscode.window.showInformationMessage("Freya: keys deleted.");
-    }),
     vscode.commands.registerCommand("freya.checkOllama", async () => {
-      const url = ollamaUrl();
-      const needed =
-        chatBackend() === "ollama"
-          ? [chatModel(), autocompleteModel()]
-          : [autocompleteModel()];
-      const health = await probeOllama(url);
-      await refreshHealth();
-      const guidance = ollamaGuidance(health, [...new Set(needed)], url);
-      if (!guidance) {
+      // Ollama behövs BARA av den som själv satt freya.light.backend till
+      // "ollama". Default-bygget behöver ingenting installerat, så kollen
+      // säger det i stället för att låtsas att något saknas.
+      if (lightBackend() === "embedded") {
         vscode.window.showInformationMessage(
-          `Freya: Ollama is responding on ${url} and all models are present.`
+          "Freya runs entirely on the models built into Tungsten. Ollama is not needed."
         );
         return;
       }
-      // Panelen är rätt yta för instruktioner (markdown, kopierbar kodrad).
-      // Notifieringen är bara vägvisaren dit.
+      const url = ollamaUrl();
+      const health = await probeOllama(url);
+      await refreshHealth();
+      const guidance = ollamaGuidance(health, [autocompleteModel()], url);
+      if (!guidance) {
+        vscode.window.showInformationMessage(
+          `Freya: Ollama is responding on ${url} and the completion model is present.`
+        );
+        return;
+      }
       const open = await vscode.window.showWarningMessage(
         health.reachable
-          ? "Freya: an Ollama model is missing."
+          ? "Freya: the Ollama completion model is missing."
           : `Freya: Ollama is not responding on ${url}.`,
         "Show in chat"
       );
       if (open === "Show in chat") {
         await vscode.commands.executeCommand("workbench.action.chat.open", {
-          query: "@freya hello",
+          query: "@freya how do I switch completion back to the built-in model?",
         });
       }
     }),
+
     vscode.commands.registerCommand("freya.showBackend", () => {
-      const backend = chatBackend();
-      const model =
-        backend === "ollama"
-          ? vscode.workspace
-              .getConfiguration("freya")
-              .get<string>("chat.ollamaModel")
-          : vscode.workspace
-              .getConfiguration("freya")
-              .get<string>("chat.workersAiModel");
+      const fim =
+        lightBackend() === "embedded"
+          ? (localState().endpoint?.modelName ?? "the embedded 1.5B (starting)")
+          : `your own Ollama (${autocompleteModel()})`;
+      const instruct = !instructInstalled()
+        ? "not installed in this build"
+        : (instructState().endpoint?.modelName ?? "3B instruct (loads on first use)");
+
       vscode.window.showInformationMessage(
-        `Freya chats via ${backend} (${model}). Autocomplete always runs locally.`
+        `Completion, next edit, syntax fix, commit messages: ${fim}\n` +
+          `Explain, rewrite, fix, tests, chat: ${instruct}\n\n` +
+          "Everything runs on this machine. No account, no network.",
+        { modal: true }
       );
     })
   );

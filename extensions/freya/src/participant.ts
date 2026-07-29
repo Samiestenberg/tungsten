@@ -1,5 +1,30 @@
-// Freya som chat participant. Panelen pratar med DEN HÄR koden, inte med
-// VS Codes inbyggda modell-providers.
+// VILANDE. REGISTRERAS INTE. Se FAS R.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// Det här var Freyas agent-participant: en verktygsloop mot en tung modell
+// (qwen2.5-coder:14b via Ollama, eller qwen3-30b via Cloudflare Workers AI).
+// Den ersattes av den lokala 3B-guiden i guideChat.ts, som är den enda
+// chat-lane som registreras i default-bygget.
+//
+// VARFÖR DEN ÄR BORTA SOM DEFAULT, inte som en smaksak:
+//
+//   * 14B-vägen krävde att användaren hämtade 9 GB innan chatten fungerade --
+//     alltså precis motsatsen till "allt kör lokalt dag ett".
+//   * Molnvägen krävde ett konto, egna nycklar och skickade koden ut ur
+//     maskinen.
+//   * Verktygsloopen var dessutom den enskilt största felkällan i hela
+//     produkten. Modellen skrev verktygsanrop som prosa-JSON i ```-block,
+//     halva anrop läckte ut i chatten som om de vore svaret, och verktyget
+//     kördes aldrig. Det finns nitton tester i toolCallParsing.test.ts som
+//     är byggda av de felen. Instruct-lanen eliminerar hela klassen genom att
+//     inte ha några verktyg alls.
+//
+// VARFÖR FILEN ÄNDÅ ÄR KVAR: beslutet om en framtida opt-in-moln-tier är
+// PARKERAT, inte avslaget, och den här koden är den granskade versionen av
+// hur en agentyta såg ut. Att kasta den och skriva den igen vore slöseri.
+// Den importeras inte av något i den aktiva kodvägen och registreras inte i
+// extension.ts. cloud.ts har samma status och beskriver hur man väcker den.
+// ─────────────────────────────────────────────────────────────────────────
 //
 // Två saker att vara noga med:
 //
@@ -16,11 +41,14 @@
 //    modulglobal. Flera sessioner samtidigt ska inte blandas.
 import * as vscode from "vscode";
 import { runAgent } from "./core/agent.js";
-import { createChatProvider, workspaceRoot, chatBackend, ollamaUrl, chatModel } from "./config.js";
-import { ollamaGuidance, probeOllama } from "./health.js";
+import { workspaceRoot } from "./config.js";
+import { createCloudProvider } from "./cloud.js";
 import { agentPausedMarkdown, isTrusted } from "./trust.js";
 
-export const FREYA_ID = "tungsten.freya";
+// Participant-id:t ägs numera av guideChat.ts. Det står kvar här bara för att
+// filen ska vara komplett om tiern väcks; två registreringar av samma id
+// samtidigt går inte.
+export const DORMANT_AGENT_ID = "tungsten.freya";
 
 // Bygger om VS Codes chat-historik till agentens meddelandeformat.
 // Vi tar bara med text; verktygsanropen i tidigare turer är redan utförda och
@@ -65,7 +93,7 @@ function toolLine(name: string, input: any): string {
 
 export function registerParticipant(ctx: vscode.ExtensionContext): void {
   const participant = vscode.chat.createChatParticipant(
-    FREYA_ID,
+    DORMANT_AGENT_ID,
     async (request, context, response, token) => {
       // Trust-grinden ligger FÖRST, före allt annat. Agenten kan skriva filer
       // och köra kommandon; i en obetrodd mapp ska den inte ens nå modellen.
@@ -84,26 +112,21 @@ export function registerParticipant(ctx: vscode.ExtensionContext): void {
         return {};
       }
 
-      // Hälsokoll INNAN vi försöker prata med modellen. Utan den fick
-      // användaren antingen tystnad eller ett raw fetch-fel när Ollama inte
-      // körde; nu blir det en rad i panelen med exakt kommandot som fixar det.
-      if (chatBackend() === "ollama") {
-        const url = ollamaUrl();
-        const health = await probeOllama(url);
-        const guidance = ollamaGuidance(health, [chatModel()], url);
-        if (guidance) {
-          response.markdown(guidance);
-          return { errorDetails: { message: "Freya: Ollama is not ready" } };
-        }
-      }
-
-      const { provider, problem, label } = await createChatProvider(ctx);
+      // Modellen kommer ur den VILANDE moln-tiern. I default-bygget returnerar
+      // createCloudProvider() undefined utan att ha rört några nycklar, så den
+      // här handlern kan inte nå ut ur maskinen ens om någon råkade registrera
+      // den. Se cloud.ts.
+      const provider = await createCloudProvider(ctx);
       if (!provider) {
-        response.markdown(problem ?? "No model configured.");
-        return { errorDetails: { message: "Freya: no model configured" } };
+        response.markdown(
+          "The cloud tier is off in this build. Everything runs on the two " +
+            "local models instead -- ask me about the editor, or use Ctrl+K Ctrl+I " +
+            "to rewrite a selection."
+        );
+        return { errorDetails: { message: "Freya: cloud tier disabled" } };
       }
 
-      response.progress(label);
+      response.progress("Workers AI");
 
       try {
         await runAgent({

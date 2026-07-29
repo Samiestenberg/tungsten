@@ -1,18 +1,24 @@
 // Commit-generator: läser `git diff --staged` och föreslår ett meddelande.
 //
-// Kör lokalt mot Ollama, aldrig mot molnet -- det ska vara gratis och fungera
-// offline även när chatten är satt till workersai.
+// TVÅ LOKALA MODELLER, I TUR OCH ORDNING. Ingen av dem är molnet.
 //
-// Vi anropar /api/chat direkt i stället för att återanvända OllamaProvider:
-// den har agentens system-prompt ("du är en kodagent som arbetar med filer",
-// verktygsregler) inbakad, vilket är precis fel instruktion för den här
-// uppgiften.
+//   1. Den inbäddade 1.5B:n med en few-shot-prompt. Att sammanfatta en diff i
+//      en rad är i praktiken en fortsättningsuppgift när man visar mönstret,
+//      och 1.5B gör det på ~1 sekund. Den är förstahandsvalet.
+//
+//   2. Den inbäddade 3B-instruct:en om 1.5B:n saknas. Den läser instruktionen
+//      i stället för att härma exempel, så den behöver ingen few-shot.
+//
+// RESERVEN BYTTES I FAS R. Den var tidigare Ollama med qwen2.5-coder:14b,
+// alltså 9 GB som användaren själv måste hämta innan commit-rubriker
+// fungerade på en maskin utan inbäddad runtime. Nu är båda stegen inbäddade,
+// och en ren installation har aldrig ett läge där funktionen kräver en
+// nedladdning.
 import * as vscode from "vscode";
-import { commitModel, ollamaUrl } from "./config.js";
-import { probeOllama, ollamaGuidance, hasModel } from "./health.js";
 import { pickRepository, type GitRepository } from "./git.js";
 import { confirmStagedIsClean } from "./secretsStaged.js";
-import { localAvailable, localComplete } from "./localModel.js";
+import { localComplete } from "./localModel.js";
+import { instructAvailable, instructOneShot } from "./instructModel.js";
 
 // Diffen kan vara enorm. Modellen behöver riktningen, inte varje rad.
 const MAX_DIFF_CHARS = 12_000;
@@ -141,37 +147,26 @@ async function generateLocal(
   }
 }
 
-async function generate(
+/**
+ * Reserven: den inbäddade 3B-instruct:en. Den läser SYSTEM som en instruktion
+ * i stället för att härma few-shot-exemplen, vilket är hela skillnaden mellan
+ * de två modellerna.
+ */
+async function generateViaInstruct(
   diff: string,
-  model: string,
-  url: string,
   token: vscode.CancellationToken
-): Promise<string> {
+): Promise<string | undefined> {
   const ac = new AbortController();
   const sub = token.onCancellationRequested(() => ac.abort());
   try {
-    const res = await fetch(`${url}/api/chat`, {
-      method: "POST",
+    const out = await instructOneShot({
+      system: SYSTEM,
+      user: `Write a commit message for this diff:\n\n${truncateDiff(diff)}`,
+      maxTokens: 160,
+      temperature: 0.2,
       signal: ac.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        stream: false,
-        options: { temperature: 0.2 },
-        messages: [
-          { role: "system", content: SYSTEM },
-          {
-            role: "user",
-            content: `Write a commit message for this diff:\n\n${truncateDiff(diff)}`,
-          },
-        ],
-      }),
     });
-    if (!res.ok) {
-      throw new Error(`Ollama ${res.status}: ${await res.text()}`);
-    }
-    const data: any = await res.json();
-    return cleanMessage(String(data?.message?.content ?? ""));
+    return out === undefined ? undefined : cleanMessage(out);
   } finally {
     sub.dispose();
   }
@@ -200,25 +195,6 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
     return;
   }
 
-  // Den inbäddade modellen är förstahandsvalet och kräver ingen installation.
-  // Ollama-kravet gäller BARA när den inte finns — annars hade en ren maskin
-  // utan Ollama fått "Ollama svarar inte" trots att allt behövdes finns i appen.
-  const useLocal = await localAvailable();
-  if (!useLocal) {
-    const url = ollamaUrl();
-    const model = commitModel();
-    const health = await probeOllama(url);
-    if (!health.reachable || !hasModel(health, model)) {
-      // Samma vägledning som chattpanelen ger, men här som notifiering.
-      const guidance = ollamaGuidance(health, [model], url);
-      vscode.window.showWarningMessage(
-        `Freya: cannot generate a commit message. ${health.reachable ? `Model ${model} is missing -- run: ollama pull ${model}` : `Ollama is not responding on ${url}.`}`
-      );
-      console.warn(`[freya] commit-generator: ${guidance}`);
-      return;
-    }
-  }
-
   // Hemlighetskoll på det som ska committas, innan vi ens skriver ett
   // meddelande åt det. Se secretsStaged.ts om varför blockeringen sitter här
   // och inte i git-extensionens commit-knapp.
@@ -234,15 +210,18 @@ async function run(repoArg?: GitRepository | { rootUri?: vscode.Uri }): Promise<
     },
     async (_progress, token) => {
       const local = await generateLocal(diff, token);
-      return local !== undefined
-        ? local
-        : generate(diff, commitModel(), ollamaUrl(), token);
+      if (local !== undefined && local.trim()) {
+        return local;
+      }
+      return generateViaInstruct(diff, token).catch(() => undefined);
     }
   );
 
   if (!message) {
     vscode.window.showWarningMessage(
-      "Freya: the model returned no message. Try again."
+      instructAvailable()
+        ? "Freya: the local model returned no message. Try again."
+        : "Freya: no local model is installed in this build, so there is nothing to write the message."
     );
     return;
   }

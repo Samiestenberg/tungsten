@@ -1,11 +1,15 @@
 // Lokal hemlighets-skanning. Inga nätverksanrop, inga modeller -- bara
 // mönstermatchning, så den kan köra på varje inklistring utan kostnad.
 //
-// Bygger vidare på SECRET_FILE_PATTERN i core/tools.ts (som read_file redan
-// använder för att vägra läsa .env/.dev.vars/.pem) i stället för att
-// duplicera den. Den används här för att avgöra VAR en hemlighet är rimlig:
-// i en .env-fil hör den hemma, i källkod eller i en commit gör den inte det.
-import { SECRET_FILE_PATTERN } from "./core/tools.js";
+// Delar SECRET_FILE_PATTERN med agentens read_file i stället för att
+// duplicera det. Mönstret används här för att avgöra VAR en hemlighet är
+// rimlig: i en .env-fil hör den hemma, i källkod eller i en commit gör den
+// inte det.
+//
+// Importen går till secretFiles.ts och INTE till core/tools.ts, som den gjorde
+// förut. Se filhuvudet där: den vägen drog in hela den vilande agentkoden
+// (filskrivning, run_command) i den aktiva modulgrafen.
+import { SECRET_FILE_PATTERN } from "./secretFiles.js";
 
 export { SECRET_FILE_PATTERN };
 

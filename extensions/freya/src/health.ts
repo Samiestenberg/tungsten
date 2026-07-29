@@ -5,7 +5,6 @@
 // förslag, inget svar, ingen förklaring. Den här filen gör felet läsbart och
 // säger exakt vilket kommando som fixar det. Den installerar aldrig något.
 import * as vscode from "vscode";
-import { TRUST_COMMAND } from "./trust.js";
 
 export interface OllamaHealth {
   /** Svarade Ollama på /api/tags? */
@@ -87,7 +86,8 @@ export function ollamaGuidance(
       "",
       health.error ? `_Details: ${health.error}_` : "",
       "",
-      "Prefer the cloud? Set `freya.chat.backend` to `workersai` and run **Freya: Set Cloudflare keys**.",
+      "You only need Ollama if you set `freya.light.backend` to `ollama`. " +
+        "The default build has both models embedded and needs nothing installed.",
     ]
       .filter((l) => l !== "")
       .join("\n");
@@ -129,24 +129,27 @@ export function createHealthStatusItem(
   return item;
 }
 
-/** Vad statusraden ska berätta om de två lanerna. */
+/** Vad statusraden ska berätta om de två LOKALA lanerna. */
 export interface LaneStatus {
-  /** Namnet på den lätta lanens modell, eller undefined om den inte är uppe. */
+  /** Namnet på FIM-lanens modell, eller undefined om den inte är uppe. */
   lightModel?: string;
-  /** true när den lätta lanen är den inbäddade modellen. */
+  /** true när FIM-lanen är den inbäddade modellen (inte Ollama-reserven). */
   lightIsEmbedded: boolean;
-  /** Tunga lanens backend efter routning. */
-  heavy: "workersai" | "ollama";
-  /** true när molnnycklar finns. */
-  cloudKeys: boolean;
-  /** false i en obetrodd mapp: agenten är pausad, lätta lanen kör. */
-  trusted: boolean;
+  /** true när 3B-instruct finns installerad i det här bygget. */
+  instructInstalled: boolean;
+  /** Namnet på instruct-modellen NÄR den är laddad. Undefined = urladdad. */
+  instructModel?: string;
 }
 
 /**
- * Statusraden visar ARBETSFÖRDELNINGEN, inte bara fel: vilken lätt modell som
- * svarar och vart det tunga går. Poängen är att en användare ska kunna se att
- * appen fungerar utan Ollama och utan molnnycklar — inte gissa.
+ * Statusraden visar ARBETSFÖRDELNINGEN, inte bara fel: vilka modeller som
+ * svarar. Poängen är att en användare ska kunna SE att appen fungerar utan
+ * Ollama, utan konto och utan nätverk -- inte gissa.
+ *
+ * FAS R tog bort molnet och den tunga Ollama-lanen härifrån. Det som stod
+ * "Heavy: Workers AI (keys missing)" var i praktiken en uppmaning att skaffa
+ * ett konto för att appen skulle kännas hel, och den uppmaningen stämmer inte
+ * längre: allt som behövs följer med i installern.
  */
 export function renderHealthStatus(
   item: vscode.StatusBarItem,
@@ -155,49 +158,26 @@ export function renderHealthStatus(
   url: string,
   lanes?: LaneStatus
 ): void {
-  const heavyText = (l: LaneStatus) =>
-    l.heavy === "workersai"
-      ? l.cloudKeys
-        ? "Workers AI"
-        : "Workers AI (keys missing)"
-      : "Ollama";
+  const instructText = (l: LaneStatus) =>
+    !l.instructInstalled
+      ? "not installed in this build"
+      : l.instructModel
+        ? `${l.instructModel} (loaded)`
+        : "3B instruct (loads on first use)";
 
-  // OBETRODD MAPP FÖRST. Agenten är av, och det är det viktigaste att veta --
-  // annars ser en tyst agent ut som en trasig app. Raden pekar på VS Codes egen
-  // trust-dialog i stället för Ollama-kollen, för det är det som löser läget.
-  if (lanes && !lanes.trusted) {
-    const light =
-      lanes.lightIsEmbedded && lanes.lightModel
-        ? `Light lane is running on the embedded ${lanes.lightModel}: inline completions, commit messages and explanations all work.`
-        : `Light lane: ${lanes.lightModel ?? "Ollama"}.`;
-    item.text = "$(shield) Freya: agent paused";
-    item.tooltip =
-      "This folder is not trusted, so Freya's agent is off -- it can write " +
-      "files and run commands.\n\n" +
-      light +
-      "\n\nClick to trust this folder and turn the agent on.";
-    item.command = TRUST_COMMAND;
-    item.backgroundColor = new vscode.ThemeColor(
-      "statusBarItem.warningBackground"
-    );
-    item.show();
-    return;
-  }
-
-  // Tillbaka till Ollama-kollen när mappen väl är betrodd.
   item.command = "freya.checkOllama";
 
-  // Lätta lanen kör på den inbäddade modellen: då FUNGERAR appen, oavsett vad
+  // FIM-lanen kör på den inbäddade modellen: då FUNGERAR appen, oavsett vad
   // Ollama gör. Ett Ollama-fel får inte se ut som att allt är trasigt.
   if (lanes?.lightIsEmbedded && lanes.lightModel) {
-    item.text = "$(chip) Freya: 1.5B local";
+    item.text = "$(chip) Freya: local";
     item.tooltip =
-      `Light (autocomplete, commit, explain): embedded ${lanes.lightModel}\n` +
-      `Heavy (agent/chat): ${heavyText(lanes)}\n\n` +
+      `Completion, next edit, syntax fix, commit messages: ${lanes.lightModel}\n` +
+      `Explain, rewrite, fix, tests, chat: ${instructText(lanes)}\n\n` +
+      "Both run on this machine. No account, no network." +
       (health.reachable
-        ? `Ollama is responding on ${url}.`
-        : `Ollama is not responding on ${url} -- not needed for the light lane.`) +
-      `\n\nClick to check Ollama and the models.`;
+        ? `\n\nOllama is also responding on ${url}, but nothing needs it.`
+        : "");
     item.backgroundColor = undefined;
     item.show();
     return;
@@ -226,12 +206,12 @@ export function renderHealthStatus(
     return;
   }
 
-  // Allt via Ollama och inget saknas: visa vart lanerna pekar, utan varning.
+  // FIM-reserven kör via Ollama och inget saknas.
   if (lanes) {
     item.text = "$(server) Freya: Ollama";
     item.tooltip =
-      `Light: Ollama (no embedded model found)\n` +
-      `Heavy: ${heavyText(lanes)}`;
+      "Completion: your own Ollama (no embedded model found)\n" +
+      `Explain, rewrite, fix, tests, chat: ${instructText(lanes)}`;
     item.backgroundColor = undefined;
     item.show();
     return;

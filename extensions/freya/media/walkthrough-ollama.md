@@ -1,18 +1,26 @@
-## Everything light already runs locally
+## Everything already runs locally
 
-Freya has an **embedded model** inside the app: Qwen2.5-Coder-1.5B (Apache-2.0),
-served by llama.cpp-server (MIT) which Tungsten starts itself on
-`127.0.0.1:11435`.
+Freya has **two embedded models** inside the app, both served by
+llama.cpp-server (MIT), which Tungsten starts itself on `127.0.0.1`.
 
-It powers:
+The small one — Qwen2.5-Coder-1.5B (Apache-2.0), port 11435 — answers while you
+type:
 
-- inline autocomplete (fill-in-the-middle)
+- inline completion, and whole blocks after you open a body
+- return values and type signatures
+- next-edit prediction: where the next change goes
+- the faint ghost-text guess when the parser sees a missing `}` or `,`
 - commit messages
-- **Freya: Explain selected code**
 
-No installation, no sign-in, no network traffic. Measured completion latency:
-~270 ms on average, 8 out of 8 under 600 ms.
+Measured: ~200-450 ms for a line or a gap, ~2 s for a whole function body.
 
-The status bar at the bottom right tells you which model is answering. If you
-would rather use your own Ollama for the light work, set `freya.light.backend`
-to `ollama`.
+The larger one — Qwen2.5-Coder-3B-Instruct, port 11436 — answers when you ask:
+explain, rewrite a selection, fix an error, generate tests, refactor, name
+things, and the chat. It loads on first use and releases its memory after five
+minutes of quiet, so the two never sit in RAM at once.
+
+No installation, no sign-in, no network traffic. The status bar at the bottom
+right tells you which models are answering.
+
+If you would rather run your own small model for completion, set
+`freya.light.backend` to `ollama`. The instruct lane stays embedded either way.
