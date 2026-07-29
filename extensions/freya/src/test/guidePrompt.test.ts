@@ -112,10 +112,28 @@ suite('Guide-chatt: prompten ljuger inte om produkten', () => {
 
 suite('Guide-chatt: scopet star kvar', () => {
 
-	test('sager uttryckligen att den inte kan lasa eller skriva filer', () => {
-		assert.ok(/cannot read files/i.test(GUIDE_SYSTEM));
-		assert.ok(/write files/i.test(GUIDE_SYSTEM));
+	test('sager uttryckligen att den inte kan skapa, lasa eller andra filer', () => {
+		// SKAPA star med FOR ATT DET MATTES. Med den gamla lydelsen ("You cannot
+		// read files, write files, ...") svarade Granite pa en rak begaran:
+		//
+		//   "Can you create a new file called utils.py for me?"
+		//   -> "Sure, I can create a new file for you. Select the text ... then
+		//       choose 'Create new file'."
+		//
+		// Alltsa agent-loftet, plus en pahittad meny. Modellen generaliserade
+		// inte "write" till "create". Med "create files" i upprakningen blev
+		// svaret "I cannot create files -- I only see what you type here."
+		//
+		// Testet ar skrivet mot VERBEN och inte mot en ordfoljd, sa att raden gar
+		// att formulera om -- men ingen av de tre formagorna kan tappas bort.
+		for (const verb of ['create', 'read', 'change']) {
+			assert.ok(
+				new RegExp(`cannot[^.]*\\b${verb}\\b[^.]*files`, 'i').test(GUIDE_SYSTEM),
+				`system-prompten sager inte att guiden inte kan ${verb} filer`
+			);
+		}
 		assert.ok(/run commands/i.test(GUIDE_SYSTEM));
+		assert.ok(/open a repository/i.test(GUIDE_SYSTEM));
 	});
 
 	test('KRITISKT: gransen demonstreras, inte bara beskrivs', () => {

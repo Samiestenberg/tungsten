@@ -86,11 +86,19 @@ export const GUIDE_SYSTEM = [
 	"You are Tungsten's built-in guide. You answer in two or three sentences, never with numbered steps.",
 	"",
 	"The only settings that exist: freya.autocomplete.enabled (inline completion), freya.nextEdit.enabled (next-edit prediction), freya.syntaxFix.enabled (ghost-text syntax fix), freya.tentative.enabled, freya.instruct.enabled.",
-	"The only shortcuts that exist: Ctrl+K (rewrite the selection), Ctrl+K Ctrl+I (same, no selection needed), Ctrl+K Ctrl+R (refactor presets).",
+	// ORDNINGEN ÄR MÄTT. Kommandoraden stod FÖRE genvägsraden fram till den här
+	// omgången; se "VAD SOM ÄNDRADES" nedan. Byt inte tillbaka utan att köra om
+	// alla sju frågorna.
 	"Commands: Freya: Explain selected code, Freya: Generate tests for this code, Freya: Suggest a better name, Freya: Second opinion on this code.",
+	"The only shortcuts that exist: Ctrl+K (rewrite the selection), Ctrl+K Ctrl+I (same, no selection needed), Ctrl+K Ctrl+R (refactor presets).",
 	"Everything runs on this machine: no account, no sign-in, no network.",
 	"",
-	"You cannot read files, write files, open a repository or run commands. You only see what the user typed.",
+	// "create files" står FÖRST och uttryckligen. Med den gamla lydelsen
+	// ("read files, write files") svarade Granite "Sure, I can create a new file
+	// for you" på en rak begäran om att skapa en fil -- alltså precis det
+	// agent-löfte hela lanen är byggd för att inte ge. Modellen generaliserade
+	// inte "write" till "create".
+	"You cannot create files, read files, change files, open a repository or run commands. You only see what the user typed.",
 	"Answer in the user's language.",
 ].join("\n");
 
@@ -133,11 +141,66 @@ export const GUIDE_SYSTEM = [
  * with that ... pick the one that says async/await"). Fler exempel är alltså
  * inte monotont bättre för en 3B; de kan dra svaret mot fel exempel. Förkastat.
  *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VAD SOM ÄNDRADES I DEN HÄR OMGÅNGEN, och vad som mättes fram.
+ *
+ * Utgångspunkten var den kända svagheten: på "vad gör Ctrl+K?" svarade Granite
+ * rätt först och rabblade sedan de andra kommandona som om de låg på Ctrl+K.
+ * Ett bredare frågebatteri (sju frågor mot den riktiga 3B:n, temperature 0,
+ * seed 7) visade att den gamla prompten hade TVÅ fel till som inte var kända:
+ *
+ *   "What does Ctrl+K Ctrl+R do?"
+ *   -> "renames all the references to the symbol under the cursor. It's a
+ *       second opinion on the code."          FEL, och två fakta hopslagna.
+ *
+ *   "Can you create a new file called utils.py for me?"
+ *   -> "Sure, I can create a new file for you. Select the text ... then choose
+ *       'Create new file'."                   AGENT-LÖFTET, rakt av.
+ *
+ * Det andra är allvarligast: det är samma felklass som FEL 2 ovan, men den
+ * gamla få-skotts-turen täckte bara ÄNDRA befintliga filer, inte SKAPA nya, och
+ * modellen generaliserade inte.
+ *
+ * TVÅ ÄNDRINGAR, båda ovan i GUIDE_SYSTEM:
+ *   1. Kommandoraden flyttad FÖRE genvägsraden.
+ *   2. "You cannot create files, read files, change files, ..."
+ *
+ * EFTER:
+ *   Ctrl+K Ctrl+R  -> "It applies the refactoring presets to the selection."  RÄTT
+ *   skapa fil      -> "I cannot create files -- I only see what you type
+ *                      here. Select the code you want changed and press
+ *                      Ctrl+K ..."                                           RÄTT
+ *   Ctrl+K         -> rätt svar först, ingen punktlista med de andra
+ *                     kommandona. Rabblandet är borta.
+ *   inställningar, agent-gränsen, nätverksfrågan: oförändrat rätt.
+ *
+ * FYRA KANDIDATER FÖRKASTADES, var och en för att den regresserade en grind.
+ * Skriv inte om raderna utan att köra om alla sju frågorna -- prompten är
+ * fortfarande en mätt artefakt och den är MYCKET känslig:
+ *
+ *   A  kommandoraden omdöpt till "Separate commands in the command palette,
+ *      not on Ctrl+K:"  -> agent-gränsen SPRACK ("Freya: Generate tests for
+ *      this code will refactor all the API calls"), och Ctrl+K beskrevs som
+ *      "the command palette". Att ens nämna paletten förgiftade svaret.
+ *   D  som nu men "You cannot create, read or change files"  -> agent-gränsen
+ *      sprack på ett nytt sätt ("Set freya.instruct.enabled to true ... will
+ *      run the code through the refactorer"). Den korta uppräkningen räcker
+ *      inte; verbet måste stå vid "files" varje gång.
+ *   E  som nu men Ctrl+K beskriven som "rewrite the selection with an
+ *      instruction you type"  -> Ctrl+K Ctrl+R blev fel igen OCH "Sure, I can
+ *      create a new file" kom tillbaka. Bekräftar regeln ovan: utförligare är
+ *      inte bättre.
+ *   B  bara ändring 1, utan ändring 2  -> Ctrl+K och Ctrl+K Ctrl+R blev rätt,
+ *      men "Sure, I can create a new file" fanns kvar. Behölls inte, eftersom
+ *      ändring 2 är den som stänger agent-löftet.
+ *
  * KVARVARANDE SVAGHET, känd och accepterad: på "vad gör Ctrl+K?" svarar Granite
- * rätt först ("rewrite the selection") men rabblar sedan de andra kommandona
- * som om de också låg på Ctrl+K, ibland som punktlista trots förbudet. Svaret
- * är otydligt, inte farligt, och de två grindar som spelar roll -- rätt
- * inställningsnamn och att den nekar agent-jobb -- klarar den.
+ * numera rätt, men lägger till en jämförelse som inte stämmer ("the same
+ * changes as ... the 'Second Opinion' button in the UI" -- det finns ingen
+ * sådan knapp). Det är en felaktig hänvisning till en YTA, inte till en
+ * inställning, och de två grindar som spelar roll -- rätt inställningsnamn och
+ * att den nekar agent-jobb -- klarar den. Varje försök att också få bort den
+ * kostade en av de grindarna; se A, D och E.
  * ─────────────────────────────────────────────────────────────────────────
  */
 export const GUIDE_SHOTS: ReadonlyArray<{ role: "user" | "assistant"; content: string }> = [
