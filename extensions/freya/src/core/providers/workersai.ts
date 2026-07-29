@@ -138,8 +138,8 @@ async function describeHttpError(res: Response, model: string): Promise<string> 
     return (
       `Workers AI rejected the key (HTTP ${res.status}). It is wrong, expired, ` +
       `or lacks the Workers AI permission. Run **Freya: Set Cloudflare keys** ` +
-      "to enter a new one, or set `freya.chat.backend` to `ollama` to stay " +
-      `local.\n\n${body}`
+      "to enter a new one, or set `CLOUD_TIER_ENABLED` back to false in " +
+      `cloud.ts to stay entirely local.\n\n${body}`
     );
   }
   if (res.status === 404) {

@@ -25,7 +25,6 @@ import {
 	cacheKey,
 	clampToLines,
 	commonIndent,
-	firstParagraph,
 	isIdentifier,
 	parseList,
 	reindent,
@@ -275,21 +274,6 @@ suite('Instruct: listan ur ett svar', () => {
 		assert.ok(!isIdentifier('user-count'));
 		assert.ok(!isIdentifier(''));
 		assert.ok(!isIdentifier('a'.repeat(60)), 'orimligt langt namn');
-	});
-});
-
-suite('Instruct: första stycket', () => {
-
-	test('plockar stycke ett av flera', () => {
-		assert.strictEqual(firstParagraph('Ett.\n\nTva.\n\nTre.'), 'Ett.');
-	});
-
-	test('ett enda stycke lämnas helt', () => {
-		assert.strictEqual(firstParagraph('Bara ett\nstycke pa tva rader.'), 'Bara ett\nstycke pa tva rader.');
-	});
-
-	test('tomt in ger tomt ut', () => {
-		assert.strictEqual(firstParagraph('   \n\n  '), '');
 	});
 });
 

@@ -20,6 +20,26 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#NameShort}Setup-{#InstallTarget}-{#Arch}-{#Version}
 Compression=lzma
 SolidCompression=yes
+; DISKSPANNING -- las det har innan du tar bort det.
+;
+; InnoSetup har ett HART tak pa 2 100 000 000 bytes for en installation som
+; INTE ar spannad. Tungsten buntar tva modeller (940 MB + 2,0 GB GGUF), och
+; Q4-kvantiserade vikter komprimerar knappt alls, sa bygget slog i taket:
+;
+;   Error: Disk spanning must be enabled in order to create an installation
+;   larger than 2100000000 bytes in size.
+;
+; Med spanning blir resultatet TungstenSetup-...exe plus en eller flera
+; .bin-filer som maste ligga i samma mapp. Det ar en verklig forsamring av
+; distributionen -- en enda nedladdningsbar fil vore battre -- men alternativet
+; ar att inte bunta 3B:n, och da faller hela loftet om att allt kor lokalt fran
+; forsta start.
+;
+; ALTERNATIVET, om en enda fil vager tyngre: bygg med FREYA_BUNDLE_INSTRUCT=0.
+; Da lamnas 3B:n utanfor, installern hamnar under taket igen, och modellen far
+; hamtas vid forsta korningen. Flaggan finns i build/gulpfile.vscode.ts.
+DiskSpanning=yes
+DiskSliceSize=2100000000
 AppMutex={code:GetAppMutex}
 SetupMutex={code:GetSetupMutex}
 WizardImageFile="{#RepoDir}\resources\win32\inno-big-100.bmp,{#RepoDir}\resources\win32\inno-big-125.bmp,{#RepoDir}\resources\win32\inno-big-150.bmp,{#RepoDir}\resources\win32\inno-big-175.bmp,{#RepoDir}\resources\win32\inno-big-200.bmp,{#RepoDir}\resources\win32\inno-big-225.bmp,{#RepoDir}\resources\win32\inno-big-250.bmp"

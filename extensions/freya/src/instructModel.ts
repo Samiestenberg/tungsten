@@ -32,7 +32,6 @@ export {
   cacheKey,
   clampToLines,
   commonIndent,
-  firstParagraph,
   isIdentifier,
   parseList,
   reindent,
