@@ -33,6 +33,8 @@ export {
   clampToLines,
   commonIndent,
   firstParagraph,
+  isIdentifier,
+  parseList,
   reindent,
   stripCodeFences,
 } from "./instructText.js";

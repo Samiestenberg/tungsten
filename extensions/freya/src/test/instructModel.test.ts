@@ -26,6 +26,8 @@ import {
 	clampToLines,
 	commonIndent,
 	firstParagraph,
+	isIdentifier,
+	parseList,
 	reindent,
 	stripCodeFences,
 } from '../instructText.js';
@@ -211,6 +213,68 @@ suite('Instruct: cachenyckel per symbol', () => {
 		const key = cacheKey('someVeryLongSymbolName', 'x'.repeat(4000));
 		assert.ok(key.length < 24, `nyckeln var ${key.length} tecken`);
 		assert.ok(/^[a-z0-9-]+$/.test(key), `oväntade tecken i ${key}`);
+	});
+});
+
+suite('Instruct: listan ur ett svar', () => {
+
+	// Modellen ombes svara med ett namn per rad och gor det OFTAST. "Oftast" ar
+	// problemet: numrering, bakatcitat och forklaringar efter ett bindestreck
+	// maste bort innan namnet kan sattas in i koden.
+
+	test('ren lista, en per rad', () => {
+		assert.deepStrictEqual(parseList('userCount\ntotalUsers\nactiveUsers'), [
+			'userCount', 'totalUsers', 'activeUsers',
+		]);
+	});
+
+	test('numrering och punkter tas bort', () => {
+		const raw = '1. userCount\n2) totalUsers\n- activeUsers\n* pendingUsers';
+		assert.deepStrictEqual(parseList(raw, 8, isIdentifier), [
+			'userCount', 'totalUsers', 'activeUsers', 'pendingUsers',
+		]);
+	});
+
+	test('bakatcitat och citattecken tas bort', () => {
+		assert.deepStrictEqual(parseList('`userCount`\n"totalUsers"', 8, isIdentifier), [
+			'userCount', 'totalUsers',
+		]);
+	});
+
+	test('KRITISKT: forklaringen efter namnet klipps bort', () => {
+		// Utan det har hade "userCount - the number of users" blivit ett
+		// variabelnamn med mellanslag i.
+		const raw = 'userCount - the number of users\ntotalUsers: everyone';
+		assert.deepStrictEqual(parseList(raw, 8, isIdentifier), ['userCount', 'totalUsers']);
+	});
+
+	test('prosarader som inte ar identifierare slapps', () => {
+		const raw = 'Here are five names:\nuserCount\nI hope these help!';
+		assert.deepStrictEqual(parseList(raw, 8, isIdentifier), ['userCount']);
+	});
+
+	test('dubbletter raknas en gang', () => {
+		assert.deepStrictEqual(parseList('a\nb\na', 8, isIdentifier), ['a', 'b']);
+	});
+
+	test('taket haller', () => {
+		assert.strictEqual(parseList('a\nb\nc\nd\ne', 3, isIdentifier).length, 3);
+	});
+
+	test('tomt svar ger tom lista', () => {
+		assert.deepStrictEqual(parseList('', 5, isIdentifier), []);
+		assert.deepStrictEqual(parseList('\n\n  \n', 5, isIdentifier), []);
+	});
+
+	test('identifierarkontrollen', () => {
+		assert.ok(isIdentifier('userCount'));
+		assert.ok(isIdentifier('_private'));
+		assert.ok(isIdentifier('$el'));
+		assert.ok(!isIdentifier('user count'));
+		assert.ok(!isIdentifier('2fast'));
+		assert.ok(!isIdentifier('user-count'));
+		assert.ok(!isIdentifier(''));
+		assert.ok(!isIdentifier('a'.repeat(60)), 'orimligt langt namn');
 	});
 });
 

@@ -125,6 +125,22 @@
         "icon": "$(beaker)"
       },
       {
+        "command": "freya.refactor",
+        "title": "Refactor selection...",
+        "category": "Freya",
+        "icon": "$(wand)"
+      },
+      {
+        "command": "freya.nameThings",
+        "title": "Suggest a better name",
+        "category": "Freya"
+      },
+      {
+        "command": "freya.reviewSelection",
+        "title": "Second opinion on this code",
+        "category": "Freya"
+      },
+      {
         "command": "freya.syntaxFix.dismiss",
         "title": "Dismiss the suggested syntax fix",
         "category": "Freya"
@@ -135,6 +151,12 @@
         "command": "freya.inlineEdit",
         "key": "ctrl+k ctrl+i",
         "mac": "cmd+k cmd+i",
+        "when": "editorTextFocus && !editorReadonly"
+      },
+      {
+        "command": "freya.refactor",
+        "key": "ctrl+k ctrl+r",
+        "mac": "cmd+k cmd+r",
         "when": "editorTextFocus && !editorReadonly"
       },
       {
@@ -161,9 +183,19 @@
           "group": "freya@2"
         },
         {
+          "command": "freya.refactor",
+          "when": "editorTextFocus && !editorReadonly",
+          "group": "freya@2"
+        },
+        {
           "command": "freya.generateTests",
           "when": "editorTextFocus",
-          "group": "freya@3"
+          "group": "freya@4"
+        },
+        {
+          "command": "freya.reviewSelection",
+          "when": "editorTextFocus",
+          "group": "freya@5"
         }
       ],
       "scm/title": [

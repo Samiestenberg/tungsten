@@ -59,116 +59,131 @@ function userPrompt(
   ].join("\n");
 }
 
+/**
+ * Hela flödet: markering -> instruktion -> omskrivning -> diff -> godkänn.
+ *
+ * Exporterad för att refaktor-presetsen (refactorPresets.ts) ska köra EXAKT
+ * samma väg med en färdigskriven instruktion. En preset är inte en egen
+ * funktion utan en genväg förbi inmatningsrutan -- byggd som en andra
+ * implementation hade den kunnat glida isär från den här (och särskilt från
+ * diff-godkännandet).
+ *
+ * `preset` undefined = fråga användaren.
+ */
+export async function runInlineEdit(preset?: string): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showInformationMessage("Freya: no open file.");
+    return;
+  }
+
+  // Utan markering: raden markören står på. Att kräva en markering för
+  // "skriv om det här" är onödigt krångel när det oftast är en rad.
+  const range = editor.selection.isEmpty
+    ? editor.document.lineAt(editor.selection.active.line).range
+    : new vscode.Range(editor.selection.start, editor.selection.end);
+
+  const fragment = editor.document.getText(range);
+  if (!fragment.trim()) {
+    vscode.window.showInformationMessage(
+      "Freya: select the code you want to change."
+    );
+    return;
+  }
+
+  if (!instructAvailable()) {
+    vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+    return;
+  }
+
+  const instruction =
+    preset ??
+    (await vscode.window.showInputBox({
+      title: "Freya: rewrite the selection",
+      prompt: "What should change? Runs locally on the 3B model.",
+      placeHolder: "e.g. add error handling, convert to async/await, add types",
+      ignoreFocusOut: true,
+    }));
+  if (!instruction?.trim()) {
+    return;
+  }
+
+  const proposal = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Freya is rewriting the selection...",
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      const ac = new AbortController();
+      const sub = token.onCancellationRequested(() => ac.abort());
+      try {
+        return await instructCode({
+          system: SYSTEM,
+          user: userPrompt(fragment, instruction.trim(), editor.document.languageId),
+          // Svaret ska rymma fragmentet igen plus lite. Tre tecken per token
+          // är den grova tumregeln vi använder på andra ställen.
+          maxTokens: Math.min(1200, Math.ceil(fragment.length / 3) + 256),
+          signal: ac.signal,
+        });
+      } catch {
+        return undefined;
+      } finally {
+        sub.dispose();
+      }
+    }
+  );
+
+  if (!proposal?.trim()) {
+    vscode.window.showWarningMessage(
+      "Freya: the model returned nothing. Try a shorter selection or a more specific instruction."
+    );
+    return;
+  }
+
+  // Indenteringen tillbaka. Se filhuvudet, punkt 2.
+  const anchorLine = editor.document.lineAt(range.start.line).text;
+  const anchorIndent = /^[ \t]*/.exec(anchorLine)![0];
+  const rewritten = reindent(
+    proposal,
+    anchorIndent,
+    range.start.character === 0
+  );
+
+  if (rewritten.trim() === fragment.trim()) {
+    vscode.window.showInformationMessage(
+      "Freya: the model left the selection unchanged."
+    );
+    return;
+  }
+
+  const approved = await confirmViaDiff({
+    before: fragment,
+    after: rewritten,
+    languageId: editor.document.languageId,
+    title: `Freya: ${instruction.trim()}`,
+    question: "Freya rewrote the selection.",
+  });
+  if (!approved) {
+    return;
+  }
+
+  // Dokumentet kan ha ändrats medan diffen låg uppe. Att skriva över ändå
+  // vore att kasta bort användarens arbete.
+  if (editor.document.getText(range) !== fragment) {
+    vscode.window.showWarningMessage(
+      "Freya: the selection changed while the diff was open. Nothing was applied."
+    );
+    return;
+  }
+
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(editor.document.uri, range, rewritten);
+  await vscode.workspace.applyEdit(edit);
+}
+
 export function registerInlineEdit(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push(
-    vscode.commands.registerCommand("freya.inlineEdit", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showInformationMessage("Freya: no open file.");
-        return;
-      }
-
-      // Utan markering: raden markören står på. Att kräva en markering för
-      // "skriv om det här" är onödigt krångel när det oftast är en rad.
-      const range = editor.selection.isEmpty
-        ? editor.document.lineAt(editor.selection.active.line).range
-        : new vscode.Range(editor.selection.start, editor.selection.end);
-
-      const fragment = editor.document.getText(range);
-      if (!fragment.trim()) {
-        vscode.window.showInformationMessage(
-          "Freya: select the code you want to change."
-        );
-        return;
-      }
-
-      if (!instructAvailable()) {
-        vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
-        return;
-      }
-
-      const instruction = await vscode.window.showInputBox({
-        title: "Freya: rewrite the selection",
-        prompt: "What should change? Runs locally on the 3B model.",
-        placeHolder: "e.g. add error handling, convert to async/await, add types",
-        ignoreFocusOut: true,
-      });
-      if (!instruction?.trim()) {
-        return;
-      }
-
-      const proposal = await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "Freya is rewriting the selection...",
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          const ac = new AbortController();
-          const sub = token.onCancellationRequested(() => ac.abort());
-          try {
-            return await instructCode({
-              system: SYSTEM,
-              user: userPrompt(fragment, instruction.trim(), editor.document.languageId),
-              // Svaret ska rymma fragmentet igen plus lite. Fyra tecken per
-              // token är den grova tumregeln vi använder på andra ställen.
-              maxTokens: Math.min(1200, Math.ceil(fragment.length / 3) + 256),
-              signal: ac.signal,
-            });
-          } catch {
-            return undefined;
-          } finally {
-            sub.dispose();
-          }
-        }
-      );
-
-      if (!proposal?.trim()) {
-        vscode.window.showWarningMessage(
-          "Freya: the model returned nothing. Try a shorter selection or a more specific instruction."
-        );
-        return;
-      }
-
-      // Indenteringen tillbaka. Se filhuvudet, punkt 2.
-      const anchorLine = editor.document.lineAt(range.start.line).text;
-      const anchorIndent = /^[ \t]*/.exec(anchorLine)![0];
-      const rewritten = reindent(
-        proposal,
-        anchorIndent,
-        range.start.character === 0
-      );
-
-      if (rewritten.trim() === fragment.trim()) {
-        vscode.window.showInformationMessage(
-          "Freya: the model left the selection unchanged."
-        );
-        return;
-      }
-
-      const approved = await confirmViaDiff({
-        before: fragment,
-        after: rewritten,
-        languageId: editor.document.languageId,
-        title: `Freya: ${instruction.trim()}`,
-        question: "Freya rewrote the selection.",
-      });
-      if (!approved) {
-        return;
-      }
-
-      // Dokumentet kan ha ändrats medan diffen låg uppe. Att skriva över ändå
-      // vore att kasta bort användarens arbete.
-      if (editor.document.getText(range) !== fragment) {
-        vscode.window.showWarningMessage(
-          "Freya: the selection changed while the diff was open. Nothing was applied."
-        );
-        return;
-      }
-
-      const edit = new vscode.WorkspaceEdit();
-      edit.replace(editor.document.uri, range, rewritten);
-      await vscode.workspace.applyEdit(edit);
-    })
+    vscode.commands.registerCommand("freya.inlineEdit", () => runInlineEdit())
   );
 }
