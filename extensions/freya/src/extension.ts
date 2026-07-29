@@ -20,6 +20,7 @@ import { initLocalServer } from "./localServer.js";
 import { initInstructServer } from "./instructServer.js";
 import { registerExplain } from "./explain.js";
 import { registerNextEdit } from "./fim/nextEdit.js";
+import { registerSyntaxFix } from "./fim/syntaxFix.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
   // ALLT NEDAN REGISTRERAS ÄVEN I EN OBETRODD MAPP. Tillägget deklarerar
@@ -54,6 +55,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerParticipant(ctx);
   registerAutocomplete(ctx);
   registerNextEdit(ctx);
+  registerSyntaxFix(ctx);
   registerCommitMessage(ctx);
   registerSecretsGuard(ctx);
   registerStagedSecretScan(ctx);
