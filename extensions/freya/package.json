@@ -289,6 +289,11 @@
           "default": true,
           "description": "Predict WHERE the next change goes after you edit a line, and suggest what should be there. Runs on the local FIM model. Nothing is ever applied without you accepting it."
         },
+        "freya.tentative.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Tentative completions in three narrow spots where the local FIM model has to guess a little intent: the body of a catch block, a regex literal you just opened, and the it()/expect() skeleton in a test file. They are guesses -- press Esc to dismiss. Turn this off to keep completion to what the model can read straight off the surrounding code."
+        },
         "freya.syntaxFix.enabled": {
           "type": "boolean",
           "default": true,

@@ -24,6 +24,7 @@ import {
   runFim,
 } from "./fim/fimCore.js";
 import { classifyFimTrigger, trimToBlock } from "./fim/fimTrigger.js";
+import { classifyTentative, trimRegexSuggestion } from "./fim/tentative.js";
 import { recordCompletionShown } from "./fim/nextEdit.js";
 
 function cfg() {
@@ -81,7 +82,17 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
       const { prefix, suffix } = fimContext(document, offset);
 
       const configured = cfg().get<number>("autocomplete.maxTokens") ?? 256;
-      const plan = classifyFimTrigger(prefix, document.languageId, configured);
+
+      // TENTATIVA lägen först: de är snävare än de allmänna och ska vinna när
+      // de träffar. De är GISSNINGAR -- se fim/tentative.ts för varför de
+      // ligger i FIM-lanen trots att de gissar en gnutta avsikt, och varför de
+      // har en egen inställning att stänga av.
+      const tentative = cfg().get<boolean>("tentative.enabled", true)
+        ? classifyTentative(prefix, document.languageId, document.uri.fsPath)
+        : undefined;
+
+      const plan =
+        tentative ?? classifyFimTrigger(prefix, document.languageId, configured);
 
       // Koppla VS Codes cancellation till fetch-abort så att en övergiven
       // request inte fortsätter belasta modellen.
@@ -114,7 +125,11 @@ export function registerAutocomplete(ctx: vscode.ExtensionContext): void {
         sub.dispose();
       }
 
-      if (plan.multiline) {
+      if (tentative?.tentativeKind === "regex") {
+        // Modellen fortsätter förbi mönstret och skriver om resten av raden
+        // som redan finns i suffixet. Se trimRegexSuggestion.
+        completion = trimRegexSuggestion(completion);
+      } else if (plan.multiline) {
         // Ett blockförslag får inte fortsätta förbi den stängande klammern och
         // skriva nästa funktion också. Se trimToBlock.
         completion = trimToBlock(completion, plan.baseIndent);
