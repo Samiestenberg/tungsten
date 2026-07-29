@@ -52,8 +52,8 @@
 // ─────────────────────────────────────────────────────────────────────────
 import * as vscode from "vscode";
 import {
+  ensureInstructReady,
   clampToLines,
-  instructAvailable,
   instructCode,
   INSTRUCT_MISSING,
   reindent,
@@ -122,7 +122,7 @@ export async function runInlineEdit(preset?: string): Promise<void> {
     return;
   }
 
-  if (!instructAvailable()) {
+  if (!(await ensureInstructReady())) {
     vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
     return;
   }

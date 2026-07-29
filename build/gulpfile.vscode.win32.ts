@@ -36,6 +36,25 @@ function packageInnoSetup(iss: string, options: { definitions?: Record<string, u
 		definitions['Sign'] = 'true';
 	}
 
+	// DISKSPANNING slas pa BARA nar den stora instruct-modellen ar buntad.
+	//
+	// InnoSetup har ett hart tak pa 2 100 000 000 bytes for en icke-spannad
+	// installation. Med bada modellerna (940 MB + 2,1 GB, Q4-vikter som knappt
+	// komprimerar) slar bygget i det taket och maste spannas -- resultatet blir
+	// .exe plus .bin-filer som maste ligga i samma mapp.
+	//
+	// Med FREYA_BUNDLE_INSTRUCT=0 ryms bygget under taket (~1,1 GB) och ska da
+	// vara EN fil: det ar den varianten som laddas upp till GitHub, dar taket
+	// per fil ar 2 GiB. Spanning pa en liten installer hade producerat en
+	// onodig .bin och gjort assetet omojligt att distribuera som en enda
+	// nedladdning.
+	//
+	// Samma miljovariabel styr alltsa bada leden: vad som buntas i
+	// gulpfile.vscode.ts, och hur det paketeras har.
+	if (process.env['FREYA_BUNDLE_INSTRUCT'] !== '0') {
+		definitions['DiskSpanning'] = 'true';
+	}
+
 	const keys = Object.keys(definitions);
 
 	keys.forEach(key => assert(typeof definitions[key] === 'string', `Missing value for '${key}' in Inno Setup package step`));

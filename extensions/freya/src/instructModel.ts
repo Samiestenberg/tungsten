@@ -78,6 +78,28 @@ export function instructAvailable(): boolean {
 }
 
 /**
+ * Finns modellen, eller kan den skaffas nu?
+ *
+ * Det här är vad ANVÄNDARVÄNDA ytor ska anropa i stället för
+ * instructAvailable(). Skillnaden gäller den lilla installern: där finns 3B:n
+ * inte på disk vid första körningen, och rätt svar är inte "funktionen är
+ * otillgänglig" utan en fråga om att hämta den. instructAvailable() finns kvar
+ * för de ställen som bara vill VETA utan att kunna visa UI -- CodeAction- och
+ * hover-providrar, som körs oavbrutet och aldrig får öppna en dialog.
+ *
+ * Importen är dynamisk för att bryta en cirkel: modelDownload.ts behöver
+ * runtimeLayout, som instructServer redan drar in, och en statisk import hade
+ * gjort instructModel beroende av vscode-UI:t som den annars inte rör.
+ */
+export async function ensureInstructReady(): Promise<boolean> {
+  if (instructInstalled()) {
+    return true;
+  }
+  const { offerDownload, INSTRUCT_DOWNLOAD } = await import("./modelDownload.js");
+  return offerDownload(INSTRUCT_DOWNLOAD);
+}
+
+/**
  * Ett skott mot instruct-modellen. Returnerar råtexten.
  * undefined = ingen 3B installerad; anroparen får säga det till användaren
  * i stället för att tyst göra ingenting.

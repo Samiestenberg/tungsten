@@ -30,8 +30,8 @@
 // och en panel hade varit en yta till att underhålla.
 import * as vscode from "vscode";
 import {
+  ensureInstructReady,
   clampToLines,
-  instructAvailable,
   instructOneShot,
   INSTRUCT_MISSING,
 } from "./instructModel.js";
@@ -101,7 +101,7 @@ export function registerCodeReview(ctx: vscode.ExtensionContext): void {
 				return;
 			}
 
-			if (!instructAvailable()) {
+			if (!(await ensureInstructReady())) {
 				vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
 				return;
 			}

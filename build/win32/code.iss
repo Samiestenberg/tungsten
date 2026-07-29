@@ -20,26 +20,25 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#NameShort}Setup-{#InstallTarget}-{#Arch}-{#Version}
 Compression=lzma
 SolidCompression=yes
-; DISKSPANNING -- las det har innan du tar bort det.
+; DISKSPANNING -- villkorlig. Las det har innan du ror det.
 ;
 ; InnoSetup har ett HART tak pa 2 100 000 000 bytes for en installation som
-; INTE ar spannad. Tungsten buntar tva modeller (940 MB + 2,0 GB GGUF), och
-; Q4-kvantiserade vikter komprimerar knappt alls, sa bygget slog i taket:
+; INTE ar spannad. Tungsten byggs i tva former:
 ;
-;   Error: Disk spanning must be enabled in order to create an installation
-;   larger than 2100000000 bytes in size.
+;   BUNTAD (default)          bada modellerna med, ~3 GB -> slar i taket, maste
+;                             spannas. Resultat: .exe + .bin-filer som maste
+;                             ligga i samma mapp. Distribueras som EN zip.
+;   FREYA_BUNDLE_INSTRUCT=0   bara 1.5B:n med, ~1,1 GB -> ryms under taket och
+;                             blir EN fil. Det ar den varianten som laddas upp
+;                             till GitHub, dar taket per fil ar 2 GiB.
 ;
-; Med spanning blir resultatet TungstenSetup-...exe plus en eller flera
-; .bin-filer som maste ligga i samma mapp. Det ar en verklig forsamring av
-; distributionen -- en enda nedladdningsbar fil vore battre -- men alternativet
-; ar att inte bunta 3B:n, och da faller hela loftet om att allt kor lokalt fran
-; forsta start.
-;
-; ALTERNATIVET, om en enda fil vager tyngre: bygg med FREYA_BUNDLE_INSTRUCT=0.
-; Da lamnas 3B:n utanfor, installern hamnar under taket igen, och modellen far
-; hamtas vid forsta korningen. Flaggan finns i build/gulpfile.vscode.ts.
+; Spanning pa den lilla varianten hade producerat en onodig .bin och gjort
+; GitHub-assetet omojligt att distribuera som en enda nedladdning -- darfor ar
+; det har villkorat och inte pasatt for jamnan.
+#ifdef DiskSpanning
 DiskSpanning=yes
 DiskSliceSize=2100000000
+#endif
 AppMutex={code:GetAppMutex}
 SetupMutex={code:GetSetupMutex}
 WizardImageFile="{#RepoDir}\resources\win32\inno-big-100.bmp,{#RepoDir}\resources\win32\inno-big-125.bmp,{#RepoDir}\resources\win32\inno-big-150.bmp,{#RepoDir}\resources\win32\inno-big-175.bmp,{#RepoDir}\resources\win32\inno-big-200.bmp,{#RepoDir}\resources\win32\inno-big-225.bmp,{#RepoDir}\resources\win32\inno-big-250.bmp"

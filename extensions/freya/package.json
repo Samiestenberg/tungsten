@@ -31,7 +31,8 @@
         "freya.local.port",
         "freya.instruct.runtimePath",
         "freya.instruct.port",
-        "freya.ollama.url"
+        "freya.ollama.url",
+        "freya.runtime.baseUrl"
       ]
     }
   },
@@ -127,6 +128,11 @@
       {
         "command": "freya.reviewSelection",
         "title": "Second opinion on this code",
+        "category": "Freya"
+      },
+      {
+        "command": "freya.downloadInstructModel",
+        "title": "Download the instruct model",
         "category": "Freya"
       },
       {
@@ -269,6 +275,12 @@
           "type": "string",
           "default": "",
           "description": "Custom path to the freya-runtime folder. Empty = look in the app's resources."
+        },
+        "freya.runtime.baseUrl": {
+          "type": "string",
+          "default": "https://huggingface.co",
+          "markdownDescription": "Where Freya downloads a model from when it is not bundled with your build. Point this at your own mirror (R2, an internal host, a file server) and nothing needs rebuilding. The path under this base and the SHA-256 are fixed in the extension; a download that does not match the expected size and checksum is deleted.",
+          "scope": "application"
         },
         "freya.instruct.enabled": {
           "type": "boolean",

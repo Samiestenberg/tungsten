@@ -56,6 +56,11 @@ const MUST_BE_RESTRICTED = [
 	'freya.instruct.port',
 	// Ollama-reserven: en URL som pekar var som helst.
 	'freya.ollama.url',
+	// Nedladdnings-URL:en. En fientlig arbetsyta som far peka om den kan
+	// servera EN EGEN GGUF, som vi sedan spawnar som barnprocess. Storleks-
+	// och sha256-kontrollen fangar det, men sparren ska sitta anda: den ar
+	// forsta forsvarslinjen och kraver ingen kontroll for att halla.
+	'freya.runtime.baseUrl',
 ];
 
 suite('Restricted Mode: fientlig arbetsyta kan inte peka om Freya', () => {
@@ -87,9 +92,14 @@ suite('Restricted Mode: fientlig arbetsyta kan inte peka om Freya', () => {
 
 	test('INGEN ny port-, sökvägs- eller URL-inställning slinker förbi', () => {
 		// Vakten mot framtiden: den som lägger till freya.<något>.port eller
-		// .runtimePath eller .url måste också spärra den, annars faller det här.
+		// .runtimePath eller något som slutar på url/uri måste också spärra den.
+		//
+		// Mönstret matchar SLUTET av sista segmentet och inte bara ".url",
+		// eftersom freya.runtime.baseUrl annars hade sluppit förbi -- vilket den
+		// gjorde tills det upptäcktes. Ett namn som "downloadUrl", "mirrorUri"
+		// eller "apiPort" fångas nu av samma regel.
 		const dangerous = configuredSettings().filter(key =>
-			/\.(port|runtimePath|url)$/i.test(key)
+			/\.[a-z0-9]*(port|runtimepath|url|uri|endpoint|host)$/i.test(key)
 		);
 		const locked = new Set(restricted());
 		const leaked = dangerous.filter(key => !locked.has(key));

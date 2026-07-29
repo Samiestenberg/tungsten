@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import * as path from "path";
+import { setDownloadRoot } from "./runtimeLayout.js";
+import { registerModelDownload } from "./modelDownload.js";
 import { registerGuideChat } from "./guideChat.js";
 import { registerLanguageModel } from "./languageModel.js";
 import { registerAutocomplete } from "./autocomplete.js";
@@ -22,6 +25,17 @@ import { registerCodeReview } from "./codeReview.js";
 import { registerPreview } from "./preview.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
+  // FÖRST AV ALLT: var hämtade modeller får ligga.
+  //
+  // Den lilla installern (byggd med FREYA_BUNDLE_INSTRUCT=0) har ingen 3B med
+  // sig, så den hämtas vid första användningen. Den kan inte skrivas till
+  // resources/app -- den mappen ligger under Program Files och är skrivskyddad
+  // för en användarinstallation. globalStorage är skrivbar och överlever
+  // uppdateringar.
+  //
+  // Måste ske INNAN någon runtime-sökning görs, annars är mappen osynlig för
+  // findRuntime() i det här fönstret.
+  setDownloadRoot(path.join(ctx.globalStorageUri.fsPath, "freya-runtime"));
   // ALLT NEDAN REGISTRERAS ÄVEN I EN OBETRODD MAPP. Tillägget deklarerar
   // untrustedWorkspaces.supported: "limited", så activate() körs direkt när
   // fönstret öppnas -- annars startade varken de inbäddade modellerna eller
@@ -71,6 +85,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerRefactorPresets(ctx);
   registerNameThings(ctx);
   registerCodeReview(ctx);
+  registerModelDownload(ctx);
 
   // MOLN-TIERN REGISTRERAS INTE. cloud.registerCloudCommands() anropas
   // medvetet inte här: ett kommando som ber om Cloudflare-nycklar hör inte

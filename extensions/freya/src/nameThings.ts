@@ -14,8 +14,8 @@
 // finns faller vi tillbaka på att ersätta markeringen -- och säger det.
 import * as vscode from "vscode";
 import {
+  ensureInstructReady,
   clampToLines,
-  instructAvailable,
   instructOneShot,
   INSTRUCT_MISSING,
   isIdentifier,
@@ -118,7 +118,7 @@ export function registerNameThings(ctx: vscode.ExtensionContext): void {
         return;
       }
 
-      if (!instructAvailable()) {
+      if (!(await ensureInstructReady())) {
         vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
         return;
       }

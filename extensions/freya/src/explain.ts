@@ -25,6 +25,7 @@
 // svarat med grannens förklaring.
 import * as vscode from "vscode";
 import {
+  ensureInstructReady,
   cacheKey,
   clampToLines,
   instructAvailable,
@@ -169,7 +170,7 @@ export function registerExplain(ctx: vscode.ExtensionContext): void {
         return;
       }
 
-      if (!instructAvailable()) {
+      if (!(await ensureInstructReady())) {
         vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
         return;
       }

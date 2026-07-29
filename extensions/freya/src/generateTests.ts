@@ -18,8 +18,8 @@
 // användaren inte bett om är precis den sortens sak regel 3 finns för.
 import * as vscode from "vscode";
 import {
+  ensureInstructReady,
   clampToLines,
-  instructAvailable,
   instructCode,
   INSTRUCT_MISSING,
 } from "./instructModel.js";
@@ -169,7 +169,7 @@ export function registerGenerateTests(ctx: vscode.ExtensionContext): void {
         return;
       }
 
-      if (!instructAvailable()) {
+      if (!(await ensureInstructReady())) {
         vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
         return;
       }

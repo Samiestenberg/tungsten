@@ -130,16 +130,23 @@ suite('Privacy: den aktiva grafen nar inte ut ur maskinen', () => {
 		}
 	});
 
+	// modelDownload.js ar den ENDA modulen som far gora ett utgaende anrop, och
+	// den har egna tester langre ner. Alla andra moduler far bara na 127.0.0.1.
+	const DOWNLOADER = 'modelDownload.js';
+
 	test('KRITISKT: ingen aktiv modul har en URL till en annan vard', () => {
 		// Tillatna: 127.0.0.1 (vara egna modellservrar) och localhost
 		// (Ollama-reserven, som anvandaren sjalv maste sla pa).
 		const allowed = /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/;
 		for (const [name, source] of activeModuleGraph()) {
+			if (name.endsWith(DOWNLOADER)) {
+				continue; // undantaget, med egna tester nedan
+			}
 			for (const m of source.matchAll(/https?:\/\/[^\s"'`)]+/g)) {
 				const url = m[0];
 				// Lankar i anvandartext (ollama.com/download, github-repot) ar
 				// text, inte trafik -- de blir bara klickbara om nagon klickar.
-				if (/ollama\.com|github\.com|huggingface\.co|developer\.mozilla/.test(url)) {
+				if (/ollama\.com|github\.com|developer\.mozilla/.test(url)) {
 					continue;
 				}
 				assert.ok(
@@ -148,6 +155,93 @@ suite('Privacy: den aktiva grafen nar inte ut ur maskinen', () => {
 				);
 			}
 		}
+	});
+
+	test('KRITISKT: bara EN modul far na natet', () => {
+		// Undantaget ovan far inte vaxa tyst. Om en andra modul borjar prata ut
+		// ska det vara ett medvetet beslut, inte nagot som glider in.
+		const withRemoteUrls = [...activeModuleGraph()]
+			.filter(([, source]) =>
+				[...source.matchAll(/https?:\/\/[^\s"'`)]+/g)]
+					.some(m => !/^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(m[0])
+						&& !/ollama\.com|github\.com|developer\.mozilla/.test(m[0])))
+			.map(([name]) => name);
+
+		assert.deepStrictEqual(
+			withRemoteUrls,
+			[DOWNLOADER],
+			`forvantade att bara ${DOWNLOADER} har en fjarr-URL`
+		);
+	});
+});
+
+suite('Privacy: modellhamtningen ar konfigurerbar och verifierad', () => {
+
+	function downloaderSource(): string {
+		const file = path.join(SRC_DIR, 'modelDownload.ts');
+		return fs.readFileSync(file, 'utf8');
+	}
+
+	test('bas-URL:en kommer ur KONFIGURATIONEN, inte ur koden', () => {
+		// Kravet: den som vill lagga vikterna pa sin egen host (R2, en intern
+		// spegel) ska kunna gora det utan att bygga om. Da far adressen inte
+		// vara last i koden.
+		const src = downloaderSource();
+		assert.ok(
+			/get<string>\("runtime\.baseUrl"\)/.test(src),
+			'baseUrl lases inte ur konfigurationen'
+		);
+		assert.ok(
+			/`\$\{downloadBaseUrl\(\)\}\//.test(src),
+			'URL:en byggs inte fran den konfigurerade basen'
+		);
+	});
+
+	test('KRITISKT: ingen intern eller privat adress ar hardkodad', () => {
+		const src = downloaderSource();
+		for (const m of src.matchAll(/https?:\/\/[^\s"'`)]+/g)) {
+			const url = m[0];
+			assert.ok(
+				/^https:\/\/huggingface\.co/.test(url),
+				`hardkodad adress som inte ar den publika modellvarden: ${url}`
+			);
+		}
+		// Vanliga former for interna varden.
+		for (const bad of ['.internal', '.corp', '.local', '10.', '192.168.', 'r2.dev', 'amazonaws']) {
+			assert.ok(!src.includes(bad), `hardkodad intern adress: ${bad}`);
+		}
+	});
+
+	test('KRITISKT: storlek OCH sha256 kontrolleras innan filen tas i bruk', () => {
+		// En modell som hamtas over natet och sedan spawnas som barnprocess far
+		// inte lita pa att den rakade ha ratt filnamn.
+		const src = downloaderSource();
+		assert.ok(/written !== model\.bytes/.test(src), 'storleken kontrolleras inte');
+		assert.ok(/actual !== model\.sha256/.test(src), 'sha256 kontrolleras inte');
+		// .part -> rename sker FORST efter kontrollerna.
+		const rename = src.indexOf('renameSync');
+		assert.ok(rename > src.indexOf('model.sha256'), 'filen byter namn innan den verifierats');
+	});
+
+	test('hamtningen sker aldrig utan att anvandaren sagt ja', () => {
+		const src = downloaderSource();
+		const ask = src.indexOf('showInformationMessage');
+		const run = src.indexOf('downloadModel(model, dest');
+		assert.ok(ask >= 0 && run >= 0 && ask < run, 'nedladdningen startar utan fraga');
+		assert.ok(/modal: true/.test(src), 'fragan ar inte modal');
+	});
+
+	test('instruct-modellens hash matchar byggskriptets', () => {
+		// Samma vikter maste ge samma kontroll, oavsett om de kom via installern
+		// eller over natet. Tva sanningar hade glidit isar.
+		const fetchScript = fs.readFileSync(
+			path.join(SRC_DIR, '..', '..', '..', 'build', 'freya', 'fetchLocalRuntime.ts'),
+			'utf8'
+		);
+		const inBuild = /sha256:\s*'([0-9a-f]{64})'/.exec(fetchScript)?.[1];
+		const inExt = /sha256:\s*"([0-9a-f]{64})"/.exec(downloaderSource())?.[1];
+		assert.ok(inBuild, 'hittade ingen sha256 i byggskriptet');
+		assert.strictEqual(inExt, inBuild, 'byggskriptet och nedladdaren har olika hash');
 	});
 
 	test('KRITISKT: den vilande koden ar inte importerad', () => {
