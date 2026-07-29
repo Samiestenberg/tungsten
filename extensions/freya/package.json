@@ -125,6 +125,13 @@
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "freya.explainSelection",
+          "when": "editorTextFocus",
+          "group": "freya@1"
+        }
+      ],
       "scm/title": [
         {
           "command": "freya.generateCommitMessage",
