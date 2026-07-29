@@ -117,6 +117,22 @@ export const COMPLETION_DOWNLOAD: DownloadableModel = {
  *   lokal fil    2 132 498 112 B   sha256 5bd783ab…f252a8ff
  *   R2-objektet  2 132 498 112 B   sha256 5bd783ab…f252a8ff
  *
+ * ATT KONTROLLERA OM IGEN KOSTAR FYRA SEKUNDER, inte en nedladdning på 2,1 GB.
+ * Objektet lades upp som multipart i 21 delar à 100 MiB, och R2 svarar därför
+ * med en S3-multipart-ETag -- inte filens MD5, utan MD5:n av de 21 delarnas
+ * MD5:er, med antalet delar efter ett bindestreck:
+ *
+ *   HEAD <baseUrl>/<urlPath>  ->  ETag "dccb27e1015e49486dfacd1df822f69b-21"
+ *                                 Content-Length 2132498112
+ *
+ * Den summan går att räkna fram ur den LOKALA filen: hasha varje 100 MiB-block
+ * för sig, konkatenera de 21 råa MD5-summorna, hasha resultatet, lägg på "-21".
+ * Stämmer den, är varje del i bucketen byte-identisk med filen vi buntar --
+ * kontrollerat 2026-07-30, och det är starkare än en storlekskoll eftersom det
+ * är innehållet och inte längden som jämförs. Poängen är att kontrollen inte
+ * behöver kosta något: den som misstänker att objektet rörts kan göra om den
+ * på fyra sekunder i stället för att avstå.
+ *
  * HuggingFace fungerar fortfarande, och SÖKVÄGEN under basen är med flit
  * identisk med deras (`<repo>/resolve/main/<fil>`). Att byta tillbaka är
  * därför bara att sätta om den här inställningen till https://huggingface.co
