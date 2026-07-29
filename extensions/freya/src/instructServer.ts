@@ -331,6 +331,16 @@ class InstructModelServer {
     // första socketen behåller porten (uppmätt, se portListening()). Vi hade
     // alltså läst in 2 GB i en process som inte kan svara.
     //
+    // KVARSTÅENDE, KÄNT OCH BEGRÄNSAT: kontrollen hjälper inte under de ~4
+    // sekunder ett annat fönsters server LÄSER IN modellen, för då lyssnar
+    // ingen än. Två fönster som utlöser en instruct-funktion inom samma
+    // sekund laddar alltså båda 2 GB, och den som förlorar kapplöpningen får
+    // en process som aldrig tar emot något. Det rättar sig självt: båda
+    // adopterar vinnarens server (nyckeln är härledd och alltså densamma),
+    // och förloraren rivs vid idle-unload eller när fönstret stängs. Ett
+    // låsfil-protokoll för att stänga ett fyra sekunders fönster är mer
+    // maskineri än problemet är värt.
+    //
     // Men det kan också vara ETT ANNAT FÖNSTER vars server fortfarande läser in
     // modellen; då ska vi vänta ut den och adoptera, inte vägra. Så: probea
     // vidare utan att spawna, och skilj på fallen först när tiden är ute.
