@@ -24,7 +24,7 @@ import 'mocha';
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GUIDE_COMMANDS, GUIDE_SETTINGS, GUIDE_SYSTEM } from '../guidePrompt.js';
+import { GUIDE_COMMANDS, GUIDE_SETTINGS, GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from '../guidePrompt.js';
 
 function manifest(): any {
 	return JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
@@ -113,23 +113,59 @@ suite('Guide-chatt: prompten ljuger inte om produkten', () => {
 suite('Guide-chatt: scopet star kvar', () => {
 
 	test('sager uttryckligen att den inte kan lasa eller skriva filer', () => {
-		assert.ok(/cannot read or write files/i.test(GUIDE_SYSTEM));
-		assert.ok(/cannot run commands/i.test(GUIDE_SYSTEM));
+		assert.ok(/cannot read files/i.test(GUIDE_SYSTEM));
+		assert.ok(/write files/i.test(GUIDE_SYSTEM));
+		assert.ok(/run commands/i.test(GUIDE_SYSTEM));
 	});
 
-	test('KRITISKT: forbjuder att skriva ut en omskriven version', () => {
-		// Den har regeln ar den som faktiskt fungerade. "Point the user to
-		// inline edit" ensamt racket inte -- pa "refactor all the API calls in
-		// my repo" svarade 3B med 33 sekunders pahittad Go-kod anda. Regeln
-		// maste FORBJUDA det andra, inte bara beskriva det onskade.
+	test('KRITISKT: gransen demonstreras, inte bara beskrivs', () => {
+		// Regeln bars numera av ett FA-SKOTTS-EXEMPEL och inte av en mening i
+		// system-prompten. Skalet star i guidePrompt.ts: Granite ignorerade den
+		// beskrivna regeln ("Sure, I can help you with that. Please provide me
+		// with the repository URL") men foljde det visade exemplet.
+		//
+		// Testet provar darfor EGENSKAPEN over bada artefakterna: det maste
+		// finnas ett exempel dar anvandaren ber om en andring i projektet och
+		// svaret bade nekar OCH pekar pa Ctrl+K.
+		const ask = GUIDE_SHOTS.findIndex(
+			shot => shot.role === 'user' && /\b(my project|my repo|repository|everywhere)\b/i.test(shot.content)
+		);
+		assert.ok(ask >= 0, 'inget fa-skotts-exempel dar anvandaren ber om ett agent-jobb');
+
+		const answer = GUIDE_SHOTS[ask + 1];
+		assert.ok(answer && answer.role === 'assistant', 'exemplet saknar svar');
 		assert.ok(
-			/do NOT write out a rewritten version/i.test(GUIDE_SYSTEM),
-			'forbudet mot att skriva ut en omskrivning ar borta ur prompten'
+			/cannot (open|read|change)/i.test(answer.content),
+			`exempelsvaret nekar inte: ${answer.content}`
+		);
+		assert.ok(
+			/ctrl\+k/i.test(answer.content),
+			`exempelsvaret pekar inte pa inline edit: ${answer.content}`
 		);
 	});
 
+	test('KRITISKT: stoppsekvenserna hor ihop med fa-skotts-exemplen', () => {
+		// Med exemplen pa plats fortsatte Granite efter sitt svar och skrev NYA
+		// Question/Answer-par -- den hade lart sig monstret for val. Stoppen
+		// klipper dar. Tar man bort det ena maste man ompröva det andra.
+		assert.ok(GUIDE_SHOTS.length > 0, 'inga fa-skotts-exempel');
+		assert.ok(
+			GUIDE_STOP.some(s => /question:/i.test(s)),
+			'stoppet pa Granites Question:-mall saknas'
+		);
+	});
+
+	test('fa-skotts-exemplen ar hela par och borjar med anvandaren', () => {
+		assert.strictEqual(GUIDE_SHOTS.length % 2, 0, 'ett exempel saknar sitt svar');
+		assert.strictEqual(GUIDE_SHOTS[0].role, 'user');
+		GUIDE_SHOTS.forEach((shot, i) => {
+			assert.strictEqual(shot.role, i % 2 === 0 ? 'user' : 'assistant', `tur ${i} har fel roll`);
+		});
+	});
+
 	test('ber om korta svar och anvandarens sprak', () => {
-		assert.ok(/keep answers short/i.test(GUIDE_SYSTEM));
+		assert.ok(/two or three sentences/i.test(GUIDE_SYSTEM));
+		assert.ok(/never with numbered steps/i.test(GUIDE_SYSTEM));
 		assert.ok(/user's language/i.test(GUIDE_SYSTEM));
 	});
 

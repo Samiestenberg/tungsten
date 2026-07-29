@@ -18,7 +18,7 @@ Tungsten splits AI work in two. Not by size, but by the question being asked:
 | | Completion lane | Instruct lane |
 |---|---|---|
 | Question | "what comes next here?" | "do this to this code" |
-| Model | Qwen2.5-Coder-1.5B base (bundled) | Qwen2.5-Coder-3B instruct (bundled) |
+| Model | Qwen2.5-Coder-1.5B base (bundled) | Granite-3B-Code-Instruct (bundled) |
 | Where | `127.0.0.1:11435` | `127.0.0.1:11436` |
 | What | Inline completion, whole blocks, return values and types, next-edit prediction, ghost-text syntax fix, commit messages | Explain, rewrite a selection, fix a semantic error, generate tests, refactor, name things, second opinion, the chat |
 | Lifetime | Loaded at startup, stays warm | Loads on first use, released after 5 min idle |
@@ -127,13 +127,14 @@ The bundled models and runtime carry their own licences:
 |---|---|
 | llama.cpp | MIT |
 | Qwen2.5-Coder-1.5B (base) | Apache-2.0 |
-| Qwen2.5-Coder-3B-Instruct | Qwen Research License |
+| IBM granite-3b-code-instruct | Apache-2.0 |
 
-Note the third row. Qwen2.5-Coder is Apache-2.0 in every size **except** 3B, which
-falls under the Qwen Research License: redistribution for research and evaluation is
-allowed, commercial use is not. A commercial build must swap that model. The swap is
-a single constant (`INSTRUCT_MODEL` in `build/freya/fetchLocalRuntime.ts`); the
-closest Apache-2.0 alternative in the same size class is
-`granite-3b-code-instruct-128k`.
+All three permit redistribution in binary form, including commercially.
+
+The instruct model was Qwen2.5-Coder-3B-Instruct until 2026-07-29. It was swapped
+because it is the one size in the Qwen2.5-Coder family that is **not** Apache-2.0 —
+it falls under the Qwen Research License, which forbids commercial use. IBM publishes
+the Granite GGUF itself rather than leaving it to a third-party requantisation, and
+its SHA-256 is pinned and verified on every fetch.
 
 Tungsten is not affiliated with, endorsed by, or supported by Microsoft.

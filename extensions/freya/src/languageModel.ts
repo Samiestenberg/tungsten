@@ -27,7 +27,7 @@ import {
   type InstructTurn,
 } from "./instructModel.js";
 import { instructState } from "./instructServer.js";
-import { GUIDE_SYSTEM } from "./guidePrompt.js";
+import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from "./guidePrompt.js";
 
 export const FREYA_VENDOR = "freya";
 
@@ -66,7 +66,9 @@ function toTurns(
 export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
   const provider: vscode.LanguageModelChatProvider = {
     async provideLanguageModelChatInformation(_options, _token) {
-      const modelName = instructState().endpoint?.modelName ?? "Qwen2.5-Coder-3B-Instruct";
+      // Namnet på GGUF:en när modellen är laddad; annars modellens namn som
+      // fallback-text i väljaren.
+      const modelName = instructState().endpoint?.modelName ?? "Granite-3B-Code-Instruct";
       return [
         {
           id: "freya-local-instruct",
@@ -114,10 +116,14 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
       try {
         await instructOneShot({
           system: GUIDE_SYSTEM,
-          history,
+          // Samma få-skotts-exempel och samma stopp som chat-participanten.
+          // De två ytorna svarar som SAMMA guide; glider de isär svarar de
+          // olika på samma fråga. Se guidePrompt.ts.
+          history: [...GUIDE_SHOTS, ...history],
           user,
           maxTokens: 1000,
-          temperature: 0.3,
+          stop: GUIDE_STOP,
+          temperature: 0,
           signal: ac.signal,
           onDelta: (chunk) => {
             if (!token.isCancellationRequested) {

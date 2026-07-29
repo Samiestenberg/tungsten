@@ -14,7 +14,7 @@ type:
 
 Measured: ~200-450 ms for a line or a gap, ~2 s for a whole function body.
 
-The larger one — Qwen2.5-Coder-3B-Instruct, port 11436 — answers when you ask:
+The larger one — IBM Granite-3B-Code-Instruct (Apache-2.0), port 11436 — answers when you ask:
 explain, rewrite a selection, fix an error, generate tests, refactor, name
 things, and the chat. It loads on first use and releases its memory after five
 minutes of quiet, so the two never sit in RAM at once.

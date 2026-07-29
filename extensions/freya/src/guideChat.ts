@@ -24,7 +24,7 @@ import {
   INSTRUCT_MISSING,
   type InstructTurn,
 } from "./instructModel.js";
-import { GUIDE_SYSTEM } from "./guidePrompt.js";
+import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from "./guidePrompt.js";
 
 // Prompten bor i guidePrompt.ts -- delad ordagrant med vscode.lm-providern,
 // och testad mot package.json så guiden inte kan hänvisa till kommandon och
@@ -110,13 +110,18 @@ export function registerGuideChat(ctx: vscode.ExtensionContext): void {
       try {
         const answer = await instructOneShot({
           system: GUIDE_SYSTEM,
-          history: historyFromContext(context),
+          // FÅ-SKOTTS-EXEMPLEN FÖRST, sedan den riktiga historiken. Se
+          // GUIDE_SHOTS i guidePrompt.ts: utan dem ignorerade Granite både
+          // formatet och gränsen och erbjöd sig att gå igenom användarens repo.
+          history: [...GUIDE_SHOTS, ...historyFromContext(context)],
           user: prompt,
           maxTokens: MAX_TOKENS,
-          // Chatt är den enda ytan där lite variation är önskvärd: ett
-          // ordagrant identiskt svar på en omformulerad fråga läser som att
-          // ingen lyssnade.
-          temperature: 0.3,
+          stop: GUIDE_STOP,
+          // TEMPERATUR 0, inte 0,3. Tidigare stod här att lite variation var
+          // önskvärd i chatten. Det gällde när modellen följde prompten ändå;
+          // med Granite kostade varje grad av drift träffsäkerhet på
+          // inställningsnamn, vilket är precis det man frågar guiden om.
+          temperature: 0,
           signal: ac.signal,
           onDelta: (chunk) => {
             if (!token.isCancellationRequested) {

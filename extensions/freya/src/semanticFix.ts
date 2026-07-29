@@ -41,12 +41,31 @@ const MAX_IMPORT_CHARS = 1200;
 /** Hur många importerade filer vi tittar i. Fler ger sämre svar, inte bättre. */
 const MAX_IMPORTS = 3;
 
+/**
+ * PROMPTEN ÄR MÄTT FRAM MOT GRANITE, inte skriven på känsla. Läs innan du ändrar.
+ *
+ * Den första versionen slutade med "If you cannot fix it from what you were
+ * given, output the file unchanged." Mot Qwen fungerade det. Mot Granite var
+ * det en UTGÅNG modellen tog: på ett typfel den hade all information för att
+ * laga returnerade den filen oförändrad.
+ *
+ * Tre ändringar fixade det, verifierade var för sig:
+ *
+ *   1. Eskapluckan borta, ersatt av ett PÅSTÅENDE om att felet går att laga.
+ *   2. "Never invent fields, functions or imports" i stället, så att bortfallet
+ *      av eskapluckan inte byts mot påhitt. Kontrollerat: ett PÅHITTAT fel på
+ *      ren kod ger fortfarande filen oförändrad -- den fabricerar inte.
+ *   3. Diffen FÖRE filen i prompten, och en konkret slutinstruktion
+ *      ("Rewrite line N so the error goes away"). Granite viktar slutet av
+ *      prompten tyngre än Qwen gjorde.
+ */
 const SYSTEM = [
   "You fix one specific error in a file.",
+  "The error is real and it IS fixable from what you are given. Fix it.",
   "Output ONLY the complete corrected file. No explanation, no markdown fences.",
   "Change as little as possible: fix the reported error and nothing else.",
   "Preserve all formatting, comments and unrelated code exactly as they are.",
-  "If you cannot fix it from what you were given, output the file unchanged.",
+  "Never invent fields, functions or imports that do not appear in what you were given.",
 ].join("\n");
 
 /** Diagnostikens kod, oavsett om den är ett tal, en sträng eller ett objekt. */
@@ -162,21 +181,26 @@ async function buildPrompt(
     importContext(document),
   ]);
 
+  // ORDNINGEN ÄR MEDVETEN, och den ändrades när modellen byttes till Granite.
+  //
+  // Diffen ligger FÖRE filen. Det är diffen som bär svaret -- felet är oftast
+  // nyss infört, och fältet som försvann finns bara där. Med filen först och
+  // diffen sist tog Granite filen som facit och svarade "inget att ändra".
+  //
+  // Den konkreta slutinstruktionen ("Rewrite line N ...") ligger sist av samma
+  // skäl: Granite viktar slutet av prompten tyngre än Qwen gjorde.
   const parts = [
     `Language: ${document.languageId}`,
     `File: ${vscode.workspace.asRelativePath(document.uri)}`,
     "",
-    `Error on line ${line}: ${diagnostic.message}`,
-    `Offending line: ${document.lineAt(diagnostic.range.start.line).text.trim()}`,
-    "",
-    "File:",
-    clampToLines(document.getText(), MAX_FILE_CHARS),
+    `Fix this error: ${diagnostic.message}`,
+    `It is on line ${line}: ${document.lineAt(diagnostic.range.start.line).text.trim()}`,
   ];
 
   if (diff.trim()) {
     parts.push(
       "",
-      "Recent changes (the error was probably introduced by one of these):",
+      "Recent changes -- the error was introduced by one of these, so the fix is here:",
       diff
     );
   }
@@ -184,7 +208,8 @@ async function buildPrompt(
     parts.push("", "Imported files:", imports);
   }
 
-  parts.push("", `Fix the error on line ${line}. Output the whole corrected file.`);
+  parts.push("", "File:", clampToLines(document.getText(), MAX_FILE_CHARS));
+  parts.push("", `Rewrite line ${line} so the error goes away. Output the whole corrected file.`);
   return parts.join("\n");
 }
 

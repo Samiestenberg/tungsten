@@ -6,7 +6,7 @@ and neither sends anything off this machine.
 | Model | What it does | When it runs |
 | --- | --- | --- |
 | Qwen2.5-Coder-1.5B (base) | Completion, block completion, return values and types, next-edit prediction, the ghost-text syntax fix, commit messages | Always loaded, `127.0.0.1:11435` |
-| Qwen2.5-Coder-3B-Instruct | Explain, rewrite a selection, fix a semantic error, generate tests, refactor presets, name things, second opinion, the chat | Loads on first use, `127.0.0.1:11436`, released after 5 minutes idle |
+| Granite-3B-Code-Instruct | Explain, rewrite a selection, fix a semantic error, generate tests, refactor presets, name things, second opinion, the chat | Loads on first use, `127.0.0.1:11436`, released after 5 minutes idle |
 
 The split is not about size. It is about the question:
 

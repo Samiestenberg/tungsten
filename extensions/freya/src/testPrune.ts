@@ -28,13 +28,43 @@
 import { lineSimilarity } from "./fim/nextEditMatch.js";
 
 /**
- * Hur lika två testnamn får vara innan vi kallar det upprepning.
+ * Hur lika två testnamn får vara innan paret räknas som en upprepning.
  *
- * 0,82 är valt mot det uppmätta fallet: de degenererade namnen ligger på
- * 0,85-0,95 av varandra, medan riktigt olika fall ("handles empty text" mot
- * "cuts at the last newline") ligger under 0,4. Marginalen är bred.
+ * 0,82: de degenererade namnen ligger på 0,85-0,95 av varandra, medan riktigt
+ * olika fall ("handles empty text" mot "cuts at the last newline") ligger under
+ * 0,4.
  */
 const REPEAT_THRESHOLD = 0.82;
+
+/**
+ * Hur många upprepningar I RAD som krävs innan vi klipper.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR DET INTE RÄCKER MED ETT PAR -- uppmätt vid modellbytet till Granite.
+ *
+ * Den första versionen klippte vid FÖRSTA namnet som liknade ett tidigare.
+ * Det fungerade mot Qwens degenerering, men åt ett fullt legitimt test ur
+ * Granites svar. Granite namnger så här:
+ *
+ *   "returns the text if it's less than or equal to the max length"
+ *   "returns the first line of the text if it's longer than the max length"
+ *   "returns the first line of the text if it's longer than half the max length"
+ *
+ * De två sista ligger runt 0,9 av varandra -- alltså inom samma spann som
+ * Qwens degenererade namn -- men de testar OLIKA grenar (den andra träffar
+ * `cut > maxChars / 2`). Likheten mellan två namn kan alltså inte skilja
+ * fallen åt; det är samma tal.
+ *
+ * Det som SKILJER dem är mönstret. Ett enstaka likt par är normalt: tester av
+ * samma funktion heter naturligt likt. En degenerering är en LÖPANDE serie där
+ * varje namn är föregående plus ett led -- Qwen producerade femton i rad.
+ *
+ * Så vi klipper först när tre i följd är nästan identiska, och klipper då vid
+ * seriens BÖRJAN. Mot Qwens svar ligger de sex första fallen kvar och serien
+ * kapas; mot Granites svar utlöses ingenting.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+const REPEAT_RUN_TO_CUT = 3;
 
 /** Rader som inleder ett testfall, på de ramverk vi genererar för. */
 const TEST_START =
@@ -115,8 +145,13 @@ function closersFor(stack: readonly string[]): string {
 export function pruneGeneratedTests(code: string): string {
 	const lines = code.split("\n");
 
-	// 1. Hitta första testfallet som bara är en omskrivning av ett tidigare.
+	// 1. Hitta en LÖPANDE SERIE av nästan identiska testnamn. Se
+	//    REPEAT_RUN_TO_CUT: ett enstaka likt par är normalt, en serie är
+	//    degenerering.
 	const seen: string[] = [];
+	/** Radindex där den pågående serien av upprepningar började. */
+	let runStart = -1;
+	let runLength = 0;
 	let cutAt = -1;
 
 	for (let i = 0; i < lines.length; i++) {
@@ -127,9 +162,22 @@ export function pruneGeneratedTests(code: string): string {
 		if (!name) {
 			continue;
 		}
-		if (seen.some((prev) => lineSimilarity(prev, name) >= REPEAT_THRESHOLD)) {
-			cutAt = i;
-			break;
+
+		const isRepeat = seen.some((prev) => lineSimilarity(prev, name) >= REPEAT_THRESHOLD);
+		if (isRepeat) {
+			if (runLength === 0) {
+				runStart = i;
+			}
+			runLength++;
+			if (runLength >= REPEAT_RUN_TO_CUT) {
+				cutAt = runStart;
+				break;
+			}
+		} else {
+			// Serien bröts av ett genuint nytt fall. Börja om räkningen -- annars
+			// hade tre spridda liknande namn genom hela filen räknats som en serie.
+			runLength = 0;
+			runStart = -1;
 		}
 		seen.push(name);
 	}

@@ -8,7 +8,7 @@ Freya has **two lanes**, and that is the whole design. Both ship inside the app.
 
 | | Completion lane | Instruct lane |
 | --- | --- | --- |
-| Model | Qwen2.5-Coder-**1.5B base** | Qwen2.5-Coder-**3B instruct** |
+| Model | Qwen2.5-Coder-**1.5B base** | IBM **Granite-3B-Code-Instruct** |
 | Port | `127.0.0.1:11435` | `127.0.0.1:11436` |
 | Lifetime | loaded at startup, stays warm | loads on first use, released after 5 min idle |
 | What | inline completion, whole blocks, return values, type signatures, next-edit prediction, ghost-text syntax fix, commit messages | explain, rewrite a selection, fix a semantic error, generate tests, refactor presets, name things, second opinion, the chat |
@@ -34,10 +34,25 @@ nonsense, not an error.
 The 3B is on-demand because of memory: 940 MB + 2.0 GB resident at the same time
 leaves no room for the editor on an 8 GB machine.
 
-Licences: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0, Qwen2.5-Coder-3B-Instruct
-**Qwen Research License** (not Apache-2.0 — see
-`freya-runtime/THIRD-PARTY-NOTICES.txt`, and `build/freya/fetchLocalRuntime.ts`
-for the one constant to change for a commercial build).
+Licences: llama.cpp MIT, Qwen2.5-Coder-1.5B Apache-2.0, granite-3b-code-instruct
+Apache-2.0. All three permit commercial redistribution in binary form. See
+`freya-runtime/THIRD-PARTY-NOTICES.txt`.
+
+The instruct model was Qwen2.5-Coder-3B-Instruct until 2026-07-29, swapped
+because it is the one size in that family under the Qwen Research License, which
+forbids commercial use.
+
+### The prompt template comes with the model, not the code
+
+Granite uses `System:` / `Question:` / `Answer:` where Qwen used ChatML — and no
+code changed for that. `instructModel.ts` posts a `messages` array to
+`/v1/chat/completions`, and `llama-server` applies the template stored in the
+GGUF's own metadata (confirmed against `/props`, which reports Granite's
+template verbatim).
+
+Do **not** hand-write a template here. It would pin one model's format into a
+provider that is meant to be model-agnostic, and the next swap would break
+quietly instead of loudly.
 
 ### The optional Ollama path
 

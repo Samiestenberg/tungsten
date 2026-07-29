@@ -81,7 +81,9 @@ suite('Testgenerering: klipp upprepningar och balansera', () => {
 		assert.strictEqual(pruneGeneratedTests(good), good);
 	});
 
-	test('REFERENSFALL: 3B fastnade i nastan identiska namn', () => {
+	test('REFERENSFALL Qwen: en LOPANDE serie nastan identiska namn klipps', () => {
+		// Ordagrant monster fran Qwen: varje namn ar foregaende plus ett led,
+		// och serien fortsatte tills tokentaket tog slut mitt i en strang.
 		const degenerate = [
 			'import { describe, it, expect } from "vitest";',
 			'',
@@ -99,19 +101,51 @@ suite('Testgenerering: klipp upprepningar och balansera', () => {
 			'  });',
 			'',
 			'  it("should handle maxChars equal to text length with a newline and a space at the beginning and end", () => {',
+			'    expect(clampToLines(" Hello\\nworld! ", 13)).toBe(" Hello\\nworld! ");',
+			'  });',
+			'',
+			'  it("should handle maxChars equal to text length with a newline and a space at the beginning and end and a trailing space", () => {',
 		].join('\n');
 
 		const pruned = pruneGeneratedTests(degenerate);
 
-		// De tva forsta fallen finns kvar ...
+		// Det forsta, genuint egna fallet finns kvar ...
 		assert.ok(pruned.includes('should handle empty text'));
-		assert.ok(pruned.includes('with a newline and a space",'));
-		// ... och upprepningarna ar borta.
-		assert.ok(!pruned.includes('at the end'), 'forsta upprepningen levde kvar');
-		assert.ok(!pruned.includes('at the beginning and end'), 'andra upprepningen levde kvar');
+		// ... och hela serien ar borta, fran dess borjan.
+		assert.ok(!pruned.includes('at the end'), 'serien levde kvar');
+		assert.ok(!pruned.includes('at the beginning and end'), 'serien levde kvar');
+		assert.ok(!pruned.includes('trailing space'), 'serien levde kvar');
 		// ... och filen ar balanserad igen.
 		assert.deepStrictEqual(openStack(pruned), [], 'filen lamnades obalanserad');
 		assert.ok(pruned.trimEnd().endsWith('});'), `slutade med: ${JSON.stringify(pruned.slice(-20))}`);
+	});
+
+	test('REFERENSFALL Granite: ETT likt par ar normalt och far INTE klippas', () => {
+		// Ordagrant svar fran granite-3b-code-instruct. De tva sista namnen
+		// ligger runt 0,9 av varandra -- samma spann som Qwens degenererade
+		// namn -- men de testar OLIKA grenar (det andra traffar cut > maxChars/2).
+		// Den forsta versionen av pruningen at det sista testet.
+		const good = [
+			'import { describe, it, expect } from "vitest";',
+			'import { clampToLines } from "./instructText";',
+			'',
+			'describe("clampToLines", () => {',
+			'  it("returns the text if it\'s less than or equal to the max length", () => {',
+			'    expect(clampToLines("Hello world", 10)).toBe("Hello world");',
+			'  });',
+			'',
+			'  it("returns the first line of the text if it\'s longer than the max length", () => {',
+			'    expect(clampToLines("Hello world\\nSecond", 10)).toBe("Hello world");',
+			'  });',
+			'',
+			'  it("returns the first line of the text if it\'s longer than half the max length", () => {',
+			'    expect(clampToLines("Hello world\\nSecond", 5)).toBe("Hello world");',
+			'  });',
+			'});',
+		].join('\n');
+
+		assert.strictEqual(pruneGeneratedTests(good), good, 'ett legitimt test klipptes bort');
+		assert.strictEqual((pruneGeneratedTests(good).match(/\bit\(/g) ?? []).length, 3);
 	});
 
 	test('avhugget svar UTAN upprepning balanseras anda', () => {

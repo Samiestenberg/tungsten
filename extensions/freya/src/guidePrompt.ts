@@ -62,28 +62,121 @@ export const GUIDE_SETTINGS = [
 	"freya.instruct.enabled",
 ] as const;
 
+/**
+ * ÄNDRA INTE EN RAD HÄR UTAN ATT KÖRA OM GRINDARNA. Texten nedan är ORDAGRANT
+ * den som mättes mot Granite, och tätheten är inte kosmetik.
+ *
+ * Under bytet skrev jag först en tätare variant: samma fakta, men med längre
+ * parenteser ("(ghost-text syntax fix, accepted with Tab)") och en mening till
+ * om semantiska fel. Den var mer informativ och mätbart SÄMRE:
+ *
+ *   "What does Ctrl+K do?"
+ *   -> "Ctrl+K is the command to rewrite the selection with an instruction. It
+ *       is also the command to generate tests for this code. It is also the
+ *       command to suggest a better name. ..."
+ *
+ *   "Go through my repo and refactor all the API calls."
+ *   -> "Freya: Generate tests for this code will refactor all the API calls."
+ *
+ * Granite slog ihop faktaraderna när de blev för täta. Den kortare listan
+ * nedan höll isär dem. Lärdomen är att prompten är en MÄTT artefakt, inte en
+ * dokumentationstext -- utförligare är inte bättre.
+ */
 export const GUIDE_SYSTEM = [
-	"You are Tungsten's built-in guide. Tungsten is a code editor with two local AI models built in:",
-	"a small one that completes code as you type, and a larger one that answers instructions on demand.",
+	"You are Tungsten's built-in guide. You answer in two or three sentences, never with numbered steps.",
 	"",
-	"WHAT YOU KNOW (use these exact names; never invent settings or shortcuts):",
-	"- Inline completion, block completion and return/type completion come from the local 1.5B model. Setting: freya.autocomplete.enabled",
-	"- Next-edit prediction, which suggests where the next change goes. Setting: freya.nextEdit.enabled",
-	"- Ghost-text syntax fix while typing, accepted with Tab. Setting: freya.syntaxFix.enabled",
-	"- Tentative completions in catch blocks, regex literals and test files. Setting: freya.tentative.enabled",
-	"- Rewrite the selection with an instruction: select code and press Ctrl+K (Freya: Rewrite selection with an instruction). Ctrl+K Ctrl+I does the same without a selection.",
-	"- Refactor presets: Ctrl+K Ctrl+R (Freya: Refactor selection...)",
-	"- Fix a semantic error: click the lightbulb on the error and choose the Freya fix",
-	"- Explain code: Freya: Explain selected code",
-	"- Generate tests: Freya: Generate tests for this code",
-	"- Suggest a name: Freya: Suggest a better name",
-	"- Second opinion on a block: Freya: Second opinion on this code",
-	"- The instruct model can be turned off entirely: freya.instruct.enabled",
-	"- Everything runs on this machine. No account, no sign-in, no network traffic.",
+	"The only settings that exist: freya.autocomplete.enabled (inline completion), freya.nextEdit.enabled (next-edit prediction), freya.syntaxFix.enabled (ghost-text syntax fix), freya.tentative.enabled, freya.instruct.enabled.",
+	"The only shortcuts that exist: Ctrl+K (rewrite the selection), Ctrl+K Ctrl+I (same, no selection needed), Ctrl+K Ctrl+R (refactor presets).",
+	"Commands: Freya: Explain selected code, Freya: Generate tests for this code, Freya: Suggest a better name, Freya: Second opinion on this code.",
+	"Everything runs on this machine: no account, no sign-in, no network.",
 	"",
-	"RULES:",
-	"- Keep answers short. Two or three sentences unless the user asks for more.",
-	"- Answer in the user's language.",
-	"- You cannot read or write files and you cannot run commands. You see only what the user typed.",
-	"- If asked to change, refactor or inspect files in the project, do NOT attempt it and do NOT write out a rewritten version. Reply in one or two sentences naming the editor action that does it.",
+	"You cannot read files, write files, open a repository or run commands. You only see what the user typed.",
+	"Answer in the user's language.",
 ].join("\n");
+
+/**
+ * FÅ-SKOTTS-EXEMPEL. Prependas till varje chatt-tur.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR DE FINNS -- uppmätt vid modellbytet till Granite, inte antaget.
+ *
+ * Qwen följde system-prompten ovan rakt av. Granite-3b-code-instruct är en
+ * KODMODELL, och den ignorerade den systematiskt på just den här ytan:
+ *
+ *   "How do I turn off inline completions?"
+ *   -> "1. Open the settings by pressing Ctrl+K, Ctrl+S. 2. Navigate to the
+ *       Completion section. 3. Uncheck the Inline suggestions option."
+ *
+ *   Numrerade steg trots förbudet, och tre påhittade ytor: den genvägen, den
+ *   sektionen och den inställningen finns inte. FACTS-listan stod i prompten
+ *   och lästes inte.
+ *
+ *   "Go through my repo and refactor all the API calls."
+ *   -> "Sure, I can help you with that. Please provide me with the repository
+ *       URL so that I can access it."
+ *
+ *   Alltså exakt den agent-roll prompten förbjuder.
+ *
+ * Omskrivningar hjälpte inte (två varianter provade, båda föll likadant). Det
+ * som fungerade var att VISA svaret i stället för att beskriva det: två
+ * exempelturer, en fråga om en inställning och en begäran att röra repot.
+ * Efter dem svarade Granite rätt på båda -- rätt inställningsnamn, och ett nej
+ * som pekar på Ctrl+K.
+ *
+ * Exemplen är valda som par med flit: ett som visar FORMATET (kort, ingen
+ * numrering, exakt inställningsnamn) och ett som visar GRÄNSEN.
+ *
+ * TVÅ PAR, INTE TRE. Ett tredje exempel provades -- en "vad gör Ctrl+K Ctrl+R"-
+ * fråga besvarad kort -- för att komma åt den kvarvarande svagheten nedan. Det
+ * gjorde mätbart SÄMRE ifrån sig på båda hållen: Ctrl+K beskrevs som "the
+ * explain dialog", och gränsen sprack igen ("That's a good idea. I can help you
+ * with that ... pick the one that says async/await"). Fler exempel är alltså
+ * inte monotont bättre för en 3B; de kan dra svaret mot fel exempel. Förkastat.
+ *
+ * KVARVARANDE SVAGHET, känd och accepterad: på "vad gör Ctrl+K?" svarar Granite
+ * rätt först ("rewrite the selection") men rabblar sedan de andra kommandona
+ * som om de också låg på Ctrl+K, ibland som punktlista trots förbudet. Svaret
+ * är otydligt, inte farligt, och de två grindar som spelar roll -- rätt
+ * inställningsnamn och att den nekar agent-jobb -- klarar den.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+export const GUIDE_SHOTS: ReadonlyArray<{ role: "user" | "assistant"; content: string }> = [
+	{
+		role: "user",
+		content: "How do I turn off the ghost-text syntax fix?",
+	},
+	{
+		role: "assistant",
+		content:
+			"Set freya.syntaxFix.enabled to false in your settings. That stops the faint " +
+			"suggestion that appears when the parser sees a missing brace or comma.",
+	},
+	{
+		role: "user",
+		content: "Can you open my project and clean up the imports everywhere?",
+	},
+	{
+		role: "assistant",
+		content:
+			"I cannot open or change files -- I only see what you type here. Select the code " +
+			"you want changed and press Ctrl+K, then tell it what to do; you will get a diff " +
+			"to approve.",
+	},
+];
+
+/**
+ * Stoppsekvenser för chatt-lanen.
+ *
+ * Granites chat-mall är `System:` / `Question:` / `Answer:`. Med få-skotts-
+ * exemplen på plats fortsatte modellen efter sitt svar och skrev NYA
+ * Question/Answer-par -- den hade lärt sig mönstret lite för väl:
+ *
+ *   "Set freya.autocomplete.enabled to false ...
+ *    Question:
+ *    How do I turn off the next-edit prediction?
+ *    Answer: ..."
+ *
+ * Stoppen klipper där. De hör ihop med exemplen: tar man bort det ena måste
+ * man ompröva det andra.
+ */
+export const GUIDE_STOP = ["\nQuestion:", "\nSystem:"];

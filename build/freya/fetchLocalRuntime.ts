@@ -17,22 +17,29 @@
 //      runtime, så även en CPU utan AVX2 fungerar. BINÄREN ÄR DELAD av båda
 //      modellerna -- llama-server tar modellen som argument.
 //   2. model/       GGUF (Qwen2.5-Coder-1.5B BASE, Q4_K_M) -> FIM-lanen, 11435.
-//   3. model-instruct/ GGUF (Qwen2.5-Coder-3B INSTRUCT, Q4_K_M) -> instruct-
+//   3. model-instruct/ GGUF (Granite-3B-Code-Instruct, Q4_K_M) -> instruct-
 //      lanen, 11436. Base kan inte följa en instruktion och instruct är sämre
 //      på FIM, så det är två modeller för två roller -- inte redundans.
 //
 // LICENSER (kontrollerade):
 //   llama.cpp ...................... MIT
 //   Qwen2.5-Coder-1.5B (base) ...... Apache-2.0
-//   Qwen2.5-Coder-3B-Instruct ...... Qwen RESEARCH License  <-- LÄS DETTA
+//   granite-3b-code-instruct ....... Apache-2.0
 //
-// VARNING OM 3B:N. Qwen2.5-Coder är Apache-2.0 i alla storlekar UTOM 3B, som
-// ligger under Qwen Research License och därmed inte tillåter kommersiell
-// användning. Modellen är specificerad uppifrån och hämtas därför som beställd,
-// men för ett kommersiellt distribuerat bygge måste den bytas. Bytet är EN
-// konstant: sätt INSTRUCT_MODEL till ett Apache-2.0-alternativ i samma
-// storleksklass -- ibm-granite/granite-3b-code-instruct-128k-GGUF är det
-// närmaste (Apache-2.0, coder-instruct, ~2 GB i Q4_K_M).
+// INSTRUCT-MODELLEN BYTTES 2026-07-29, av licensskäl. Den var tidigare
+// Qwen2.5-Coder-3B-Instruct, som ligger under Qwen Research License -- den enda
+// storleken i Qwen2.5-Coder-familjen som INTE är Apache-2.0, och därmed inte
+// distribuerbar i ett kommersiellt bygge. IBM:s granite-3b-code-instruct är
+// Apache-2.0 rakt igenom, i samma storleksklass, och GGUF:en publiceras av IBM
+// själva -- inte som en tredjeparts-omkvantisering.
+//
+// PROMPT-MALLEN FÖLJER MED MODELLEN, INTE KODEN. Granite använder
+// System:/Question:/Answer: där Qwen använder ChatML. Vi skriver ändå ingen
+// mall själva: instructModel.ts postar en `messages`-array till
+// /v1/chat/completions, och llama-server tillämpar mallen ur GGUF:ens egen
+// metadata. Verifierat mot /props, som rapporterar Granites mall ordagrant.
+// Skriv INTE en mall för hand -- det vore att låsa fast en modells format i en
+// provider som ska vara modelloberoende, och nästa byte skulle tysta gå sönder.
 //
 // resources/freya-runtime/ är GITIGNORE:AD med flit: ~3 GB modellvikter hör
 // inte i git-historiken. Saknas model/ faller FIM-lanen tillbaka på Ollama;
@@ -77,18 +84,22 @@ const OLLAMA_MODEL_REF = 'qwen2.5-coder:1.5b-base';
  * ett krav.
  */
 const INSTRUCT_MODEL = {
-	file: 'qwen2.5-coder-3b-instruct-q4_k_m.gguf',
+	file: 'granite-3b-code-instruct.Q4_K_M.gguf',
 	url:
-		'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/' +
-		'qwen2.5-coder-3b-instruct-q4_k_m.gguf',
+		'https://huggingface.co/ibm-granite/granite-3b-code-instruct-2k-GGUF/resolve/main/' +
+		'granite-3b-code-instruct.Q4_K_M.gguf',
 	/** Verifierad på den hämtade filen 2026-07-29. */
-	sha256: '724fb256bec1ff062b2f65e4569e871ad2e95ab2a3989723d1769c54294730b7',
-	bytes: 2_104_932_800,
-	/** Ollama-taggen med samma vikter, om den råkar finnas lokalt. */
-	ollamaRef: 'qwen2.5-coder:3b-instruct-q4_K_M',
-	license: 'Qwen Research License (INTE Apache-2.0 -- se filhuvudet)',
-	licenseUrl: 'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct/blob/main/LICENSE',
-	homepage: 'https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF',
+	sha256: '5bd783ab3925f425f17764fd34c1f7119fb64a023ccf9dd48654c3c3f252a8ff',
+	bytes: 2_132_498_112,
+	/**
+	 * Ingen Ollama-genväg. IBM publicerar GGUF:en själva, och en Ollama-tagg
+	 * med exakt samma kvantisering finns inte att lita på. HuggingFace-vägen
+	 * med pinnad sha256 är den enda.
+	 */
+	ollamaRef: undefined as string | undefined,
+	license: 'Apache-2.0',
+	licenseUrl: 'https://huggingface.co/ibm-granite/granite-3b-code-instruct-2k-GGUF',
+	homepage: 'https://huggingface.co/ibm-granite/granite-3b-code-instruct-2k-GGUF',
 };
 
 function log(msg: string): void {
@@ -292,8 +303,10 @@ async function fetchInstructModel(): Promise<void> {
 
 	fs.mkdirSync(INSTRUCT_MODEL_DIR, { recursive: true });
 
-	// Genväg: samma vikter kan redan ligga i en lokal Ollama.
-	const blob = findOllamaBlob(INSTRUCT_MODEL.ollamaRef);
+	// Genväg via en lokal Ollama BARA om modellen har en tagg med exakt samma
+	// vikter. Granite har ingen sådan vi litar på, så ollamaRef är undefined och
+	// vi går alltid till HuggingFace med pinnad sha256.
+	const blob = INSTRUCT_MODEL.ollamaRef ? findOllamaBlob(INSTRUCT_MODEL.ollamaRef) : undefined;
 	if (blob && fs.statSync(blob).size === INSTRUCT_MODEL.bytes) {
 		log(`kopierar instruct-modellen från ${blob}`);
 		fs.copyFileSync(blob, dest);
@@ -331,19 +344,15 @@ function writeLicenseNotice(): void {
 		'  https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B',
 		'',
 		`Modell (instruct-lanen): ${INSTRUCT_MODEL.file}`,
-		'  Qwen2.5-Coder-3B-Instruct, kvantiserad till Q4_K_M',
+		'  IBM granite-3b-code-instruct, kvantiserad till Q4_K_M',
 		`  Licens: ${INSTRUCT_MODEL.license}`,
-		`  ${INSTRUCT_MODEL.licenseUrl}`,
 		`  ${INSTRUCT_MODEL.homepage}`,
 		'',
-		'  OBS: Qwen2.5-Coder är Apache-2.0 i alla storlekar UTOM 3B, som ligger',
-		'  under Qwen Research License. Den licensen tillåter vidaredistribution',
-		'  för forskning och utvärdering men INTE kommersiell användning. För ett',
-		'  kommersiellt bygge måste modellen bytas mot ett Apache-2.0-alternativ',
-		'  i samma storleksklass (t.ex. granite-3b-code-instruct-128k). Bytet är',
-		'  konstanten INSTRUCT_MODEL i build/freya/fetchLocalRuntime.ts.',
+		'  GGUF:en publiceras av IBM själva, inte som en tredjeparts-',
+		'  omkvantisering. sha256 är pinnad i build/freya/fetchLocalRuntime.ts',
+		'  och verifieras vid varje hämtning.',
 		'',
-		'llama.cpp- och 1.5B-licenserna tillåter vidaredistribution i binär form.',
+		'Alla tre licenserna tillåter vidaredistribution i binär form.',
 		'Den här filen följer med i det packade bygget som attribution.',
 		''
 	].join('\n');
