@@ -1185,7 +1185,18 @@ export function registerChatActions() {
 			super({
 				id: 'workbench.action.chat.showExtensionsUsingCopilot',
 				title: localize2('showCopilotUsageExtensions', "Show Extensions using Copilot"),
-				f1: true,
+				// TUNGSTEN: f1: false -- ute ur kommandopaletten.
+				//
+				// Det har var den sista Copilot-namngivna ytan en anvandare
+				// faktiskt kunde SE. Den oppnar Extensions-vyn filtrerad pa ett
+				// bidragspunkt-id, och Tungsten har ingen extensionsGallery i
+				// product.json -- sokningen ar alltid tom. Kvar blev en post i
+				// paletten som sager "Copilot" i en produkt utan Copilot.
+				//
+				// Kommandot ar KVAR registrerat, det ar bara palettposten som ar
+				// borta. Att avregistrera det hade brutit allt som anropar det
+				// programmatiskt utan att vinna nagot.
+				f1: false,
 				category: EXTENSIONS_CATEGORY,
 				precondition: ChatContextKeys.enabled
 			});

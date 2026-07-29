@@ -544,4 +544,62 @@ suite('KeybindingResolver', () => {
 			testResolve(emptyContext, [KeyMod.CtrlCmd | KeyCode.KeyB, KeyMod.CtrlCmd | KeyCode.KeyC, KeyCode.KeyI], 'long-multi-chord-2');
 		});
 	});
+
+	// TUNGSTEN: Ctrl+K ar bundet till inline edit MED en markering, samtidigt som
+	// det ar prefixet for hela ackord-familjen (ctrl+k ctrl+s, ctrl+k z, ...).
+	//
+	// Pastaendet ar att de kan samexistera: med markering kors inline edit, utan
+	// markering fungerar ackorden oforandrat. Det pastaendet vilar helt pa hur
+	// resolve() beter sig nar en enkeltangent och ett ackord delar forsta
+	// tangent, sa det bevisas har i stallet for i en handtestad skarmdump.
+	suite('Tungsten: single key and chord sharing a prefix', () => {
+
+		function item(keybinding: number | number[], command: string, when: ContextKeyExpression | undefined): ResolvedKeybindingItem {
+			return kbItem(keybinding, command, null, when, true);
+		}
+
+		// Ordningen speglar verkligheten: workbenchens ackord registreras forst,
+		// extensionens enkeltangent sist. _findCommand() gar bakifran, sa den
+		// sist tillagda vars when matchar vinner.
+		const hasSelection = ContextKeyExpr.equals('editorHasSelection', true);
+		const resolver = new KeybindingResolver([
+			item([KeyMod.CtrlCmd | KeyCode.KeyK, KeyMod.CtrlCmd | KeyCode.KeyS], 'workbench.action.openGlobalKeybindings', undefined),
+			item([KeyMod.CtrlCmd | KeyCode.KeyK, KeyCode.KeyZ], 'workbench.action.toggleZenMode', undefined),
+			item(KeyMod.CtrlCmd | KeyCode.KeyK, 'freya.inlineEdit', hasSelection),
+		], [], () => { });
+
+		const ctrlK = getDispatchStr(<KeyCodeChord>decodeKeybinding(KeyMod.CtrlCmd | KeyCode.KeyK, OS)!.chords[0]);
+
+		test('MED markering: Ctrl+K kor inline edit direkt', () => {
+			const result = resolver.resolve(createContext({ editorHasSelection: true }), [], ctrlK);
+			assert.strictEqual(result.kind, ResultKind.KbFound);
+			assert.strictEqual((result as { commandId: string | null }).commandId, 'freya.inlineEdit');
+		});
+
+		test('KRITISKT: UTAN markering gar Ctrl+K in i ackordlage', () => {
+			// Det har ar paståendet som betyder nagot: att ackord-familjen
+			// overlever. Faller det har har bar ctrl+k svalt ctrl+k ctrl+s,
+			// ctrl+k z och alla andra.
+			const result = resolver.resolve(createContext({ editorHasSelection: false }), [], ctrlK);
+			assert.strictEqual(result.kind, ResultKind.MoreChordsNeeded);
+		});
+
+		test('UTAN markering: Ctrl+K Ctrl+S nar fram hela vagen', () => {
+			const ctx = createContext({ editorHasSelection: false });
+			const ctrlS = getDispatchStr(<KeyCodeChord>decodeKeybinding(KeyMod.CtrlCmd | KeyCode.KeyS, OS)!.chords[0]);
+
+			assert.strictEqual(resolver.resolve(ctx, [], ctrlK).kind, ResultKind.MoreChordsNeeded);
+			const result = resolver.resolve(ctx, [ctrlK], ctrlS);
+			assert.strictEqual(result.kind, ResultKind.KbFound);
+			assert.strictEqual((result as { commandId: string | null }).commandId, 'workbench.action.openGlobalKeybindings');
+		});
+
+		test('MED markering ar ackorden onabara -- det uttalade priset', () => {
+			// Dokumenterar avvagningen i stallet for att lata den vara en
+			// overraskning: medan text AR markerad tar inline edit tangenten.
+			// Samma val som Cursor gor.
+			const result = resolver.resolve(createContext({ editorHasSelection: true }), [], ctrlK);
+			assert.notStrictEqual(result.kind, ResultKind.MoreChordsNeeded);
+		});
+	});
 });

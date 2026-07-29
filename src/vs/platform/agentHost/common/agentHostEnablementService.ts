@@ -3,12 +3,10 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { isWeb } from '../../../base/common/platform.js';
 import * as nls from '../../../nls.js';
 import { Extensions as ConfigurationExtensions, IConfigurationRegistry } from '../../configuration/common/configurationRegistry.js';
 import { RawContextKey } from '../../contextkey/common/contextkey.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
-import product from '../../product/common/product.js';
 import { Registry } from '../../registry/common/platform.js';
 
 /** @internal Only the enablement service may read this configuration value at runtime. */
@@ -42,7 +40,23 @@ configurationRegistry.registerConfiguration({
 		[agentHostEnabledSettingId]: {
 			type: 'boolean',
 			description: nls.localize('chat.agentHost.enabled', "When enabled, some agents run in a separate agent host process."),
-			default: !isWeb && product.quality !== 'stable',
+			// TUNGSTEN: false.
+			//
+			// Agent-hosten kor externa agenter (Copilot CLI, Claude, Codex) i en
+			// egen process och registrerar en session-typ per agent, med
+			// kommandon som "open new Copilot CLI session".
+			//
+			// Upstream-defaulten var `!isWeb && product.quality !== 'stable'`.
+			// Tungstens product.json har INGEN quality-nyckel, sa uttrycket blev
+			// `undefined !== 'stable'` = true: agent-hosten var PASLAGEN, och
+			// agent-host-copilotcli-kommandona lag registrerade i det packade
+			// bygget. Det syntes inte i koden -- det upptacktes genom att fraga
+			// det korande fonstret vilka kommandon som faktiskt fanns.
+			//
+			// Tungsten har en chatt: den lokala 3B-guiden. En andra agent-yta
+			// som startar en molnagent hor inte hemma i ett bygge som lovar att
+			// allt kor lokalt.
+			default: false,
 			tags: ['experimental', 'advanced'],
 			experiment: { mode: 'startup' },
 		},
