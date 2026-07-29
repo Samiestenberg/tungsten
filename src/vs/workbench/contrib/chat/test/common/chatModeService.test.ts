@@ -83,7 +83,9 @@ suite('ChatModeService', () => {
 	test('should return builtin modes', async () => {
 		const modes = await chatModeService.getLocalModes();
 
-		assert.strictEqual(modes.builtin.length, 3);
+		// TUNGSTEN: 1, inte 3. Ask ar det enda inbyggda laget -- se
+		// getBuiltinModes() i chatModes.ts.
+		assert.strictEqual(modes.builtin.length, 1);
 		assert.strictEqual(modes.custom.length, 0);
 
 		// Check that Ask mode is always present
@@ -94,27 +96,46 @@ suite('ChatModeService', () => {
 		assert.strictEqual(askMode.kind, ChatModeKind.Ask);
 	});
 
-	test('should adjust builtin modes based on tools agent availability', async () => {
-		// Agent mode should always be present regardless of tools agent availability
+	// TUNGSTEN: de tva testerna nedan var upstream-tester for att Agent- och
+	// Edit-lagena FANNS. I Tungsten ar Ask det enda inbyggda laget -- chatten ar
+	// en guide till editorn pa en lokal 3B, inte en kodagent. Se
+	// getBuiltinModes() i chatModes.ts for hela resonemanget.
+	//
+	// Testerna ar VANDA i stallet for borttagna: att Agent-laget inte kommer
+	// tillbaka ar en egenskap som ska bevakas, precis som att det fanns var det
+	// upstream.
+
+	test('TUNGSTEN: agent mode is never offered, whatever the tools agent says', async () => {
 		chatAgentService.setHasToolsAgent(true);
 		let agents = await chatModeService.getLocalModes();
-		assert.ok(agents.builtin.find(agent => agent.id === ChatModeKind.Agent));
+		assert.strictEqual(agents.builtin.find(agent => agent.id === ChatModeKind.Agent), undefined);
 
-		// Without tools agent - Agent mode should not be present
 		chatAgentService.setHasToolsAgent(false);
 		agents = await chatModeService.getLocalModes();
 		assert.strictEqual(agents.builtin.find(agent => agent.id === ChatModeKind.Agent), undefined);
+	});
 
-		// Ask and Edit modes should always be present
-		assert.ok(agents.builtin.find(agent => agent.id === ChatModeKind.Ask));
-		assert.ok(agents.builtin.find(agent => agent.id === ChatModeKind.Edit));
+	test('TUNGSTEN: Ask is the only builtin mode -- no Agent, no Edit', async () => {
+		const agents = await chatModeService.getLocalModes();
+		assert.deepStrictEqual(
+			agents.builtin.map(mode => mode.id),
+			[ChatModeKind.Ask],
+			'the mode picker must offer Ask and nothing else'
+		);
+	});
+
+	test('TUNGSTEN: agent mode cannot be reached by id either', async () => {
+		// Lagesvaljaren ar en yta; findModeById ar en annan. Bada maste saga nej,
+		// annars gar laget att na via en aterstalld session eller ett kommando.
+		const agentMode = (await chatModeService.getLocalModes()).findModeById(ChatModeKind.Agent);
+		assert.strictEqual(agentMode, undefined);
 	});
 
 	test('should find builtin modes by id', async () => {
-		const agentMode = (await chatModeService.getLocalModes()).findModeById(ChatModeKind.Agent);
-		assert.ok(agentMode);
-		assert.strictEqual(agentMode.id, ChatMode.Agent.id);
-		assert.strictEqual(agentMode.kind, ChatModeKind.Agent);
+		const askMode = (await chatModeService.getLocalModes()).findModeById(ChatModeKind.Ask);
+		assert.ok(askMode);
+		assert.strictEqual(askMode.id, ChatMode.Ask.id);
+		assert.strictEqual(askMode.kind, ChatModeKind.Ask);
 	});
 
 	test('should return undefined for non-existent mode', async () => {
@@ -142,19 +163,13 @@ suite('ChatModeService', () => {
 
 		const modes = await chatModeService.getLocalModes();
 
-		assert.strictEqual(modes.custom.length, 1);
-
-		const testMode = modes.custom[0];
-		assert.strictEqual(testMode.id, customMode.uri.toString());
-		assert.strictEqual(testMode.name.get(), customMode.name);
-		assert.strictEqual(testMode.label.get(), customMode.name);
-		assert.strictEqual(testMode.description.get(), customMode.description);
-		assert.strictEqual(testMode.kind, ChatModeKind.Agent);
-		assert.deepStrictEqual(testMode.customTools?.get(), customMode.tools);
-		assert.deepStrictEqual(testMode.modeInstructions?.get(), customMode.agentInstructions);
-		assert.deepStrictEqual(testMode.handOffs?.get(), customMode.handOffs);
-		assert.strictEqual(testMode.uri?.get().toString(), customMode.uri.toString());
-		assert.deepStrictEqual(testMode.source, workspaceSource);
+		// TUNGSTEN: anpassade lagen lases fortfarande in (handelsen nedan fyrar,
+		// se nasta test), men de OFFERERAS aldrig. De ar agent-lagets
+		// utbyggnadspunkt, och utan agent-lage finns det inget att bygga ut --
+		// ett anpassat lage i valjaren vore en "Custom Agents"-yta med ett annat
+		// namn. Se getCustomModes() i chatModes.ts.
+		assert.strictEqual(modes.custom.length, 0);
+		assert.strictEqual(modes.findModeById(customMode.uri.toString()), undefined);
 	});
 
 	test('should fire change event when custom modes are updated', async () => {
@@ -183,7 +198,11 @@ suite('ChatModeService', () => {
 		assert.ok(eventFired);
 	});
 
-	test('should find custom modes by id', async () => {
+	test('TUNGSTEN: custom modes cannot be reached by id either', async () => {
+		// Upstream slog upp instansen direkt i _customModeInstances, forbi
+		// getCustomModes(). Foljden var att ett anpassat lage gick att na VIA ID
+		// aven nar det inte offererades -- en aterstalld session som mindes ett
+		// lage-id hade fatt tillbaka det. Se findModeById() i chatModes.ts.
 		const customMode: ICustomAgent = {
 			id: 'findable-mode',
 			uri: URI.parse('file:///test/findable-mode.md'),
@@ -201,11 +220,10 @@ suite('ChatModeService', () => {
 
 		await waitForRefresh();
 
-		const foundMode = (await chatModeService.getLocalModes()).findModeById(customMode.uri.toString());
-		assert.ok(foundMode);
-		assert.strictEqual(foundMode.id, customMode.uri.toString());
-		assert.strictEqual(foundMode.name.get(), customMode.name);
-		assert.strictEqual(foundMode.label.get(), customMode.name);
+		const modes = await chatModeService.getLocalModes();
+		assert.strictEqual(modes.findModeById(customMode.uri.toString()), undefined, 'reachable by uri');
+		assert.strictEqual(modes.findModeById(customMode.id), undefined, 'reachable by id');
+		assert.strictEqual(modes.findModeByName(customMode.name), undefined, 'reachable by name');
 	});
 
 	test('should update existing custom mode instances when data changes', async () => {
@@ -224,14 +242,16 @@ suite('ChatModeService', () => {
 			enabled: true
 		};
 
+		// TUNGSTEN: uppdateringen av instanserna sker fortfarande (bokforingen ar
+		// orord), men den ar inte langre observerbar genom det publika API:t --
+		// custom ar alltid tom. Det som testas har ar darfor att en UPPDATERING
+		// inte oppnar en bakvag: oavsett hur manga gangor prompt-tjansten byter
+		// data far inget lage sippra ut i valjaren eller i uppslagen.
 		promptsService.setCustomModes([initialMode]);
 		await waitForRefresh();
 
-		const initialModes = await chatModeService.getLocalModes();
-		const initialCustomMode = initialModes.custom[0];
-		assert.strictEqual(initialCustomMode.description.get(), 'Initial description');
+		assert.strictEqual((await chatModeService.getLocalModes()).custom.length, 0);
 
-		// Update the mode data
 		const updatedMode: ICustomAgent = {
 			...initialMode,
 			description: 'Updated description',
@@ -244,17 +264,9 @@ suite('ChatModeService', () => {
 		await waitForRefresh();
 
 		const updatedModes = await chatModeService.getLocalModes();
-		const updatedCustomMode = updatedModes.custom[0];
-
-		// The instance should be the same (reused)
-		assert.strictEqual(initialCustomMode, updatedCustomMode);
-
-		// But the observable properties should be updated
-		assert.strictEqual(updatedCustomMode.description.get(), 'Updated description');
-		assert.deepStrictEqual(updatedCustomMode.customTools?.get(), ['tool1', 'tool2']);
-		assert.deepStrictEqual(updatedCustomMode.modeInstructions?.get(), { content: 'Updated body', toolReferences: [] });
-		assert.deepStrictEqual(updatedCustomMode.model?.get(), ['Updated model']);
-		assert.deepStrictEqual(updatedCustomMode.source, workspaceSource);
+		assert.strictEqual(updatedModes.custom.length, 0);
+		assert.strictEqual(updatedModes.findModeById(uri.toString()), undefined);
+		assert.deepStrictEqual(updatedModes.builtin.map(m => m.id), [ChatModeKind.Ask]);
 	});
 
 	test('should not fire change event when custom mode payload is unchanged', async () => {
@@ -322,20 +334,20 @@ suite('ChatModeService', () => {
 			enabled: true
 		};
 
-		// Add both modes
+		// TUNGSTEN: hur manga lagen prompt-tjansten an rapporterar, och hur de an
+		// laggs till eller tas bort, ar svaret alltid noll offererade lagen.
 		promptsService.setCustomModes([mode1, mode2]);
 		await waitForRefresh();
 
 		let modes = await chatModeService.getLocalModes();
-		assert.strictEqual(modes.custom.length, 2);
+		assert.strictEqual(modes.custom.length, 0);
 
-		// Remove one mode
 		promptsService.setCustomModes([mode1]);
 		await waitForRefresh();
 
 		modes = await chatModeService.getLocalModes();
-		assert.strictEqual(modes.custom.length, 1);
-		assert.strictEqual(modes.custom[0].id, mode1.uri.toString());
+		assert.strictEqual(modes.custom.length, 0);
+		assert.strictEqual(modes.findModeById(mode1.uri.toString()), undefined);
 	});
 
 });

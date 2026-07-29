@@ -184,17 +184,27 @@ export interface IChatSetupRequirement {
  * intentionally satisfy the entitlement-based checks so those flows keep working.
  */
 export function chatRequiresSetup(context: IChatSetupRequirement): boolean {
-	return (
-		(!context.completed && !context.hasByokModels) ||			// Setup not completed (unless BYOK models are available)
-		context.disabled ||											// Extension disabled: run setup to enable
-		context.untrusted ||										// Workspace untrusted: run setup to ask for trust
-		context.entitlement === ChatEntitlement.Available ||		// Entitlement available: run setup to sign up
-		(
-			context.entitlement === ChatEntitlement.Unknown &&		// Entitlement unknown: run setup to sign in / sign up
-			!context.anonymous &&									// unless anonymous access is enabled
-			!context.hasByokModels									// unless BYOK models are available
-		)
-	);
+	// TUNGSTEN: alltid false. Det finns ingen setup att kora.
+	//
+	// Upstream betyder "setup" att anvandaren loggar in pa GitHub Copilot eller
+	// registrerar sig for ett abonnemang. Den har funktionen ar ENDA kallan for
+	// det beslutet, och tva ytor lyssnar pa den: setup-agenten (som annars
+	// routar ett skickat meddelande genom inloggningsflodet) och modellvaljaren
+	// (som annars visar rubriken "Sign in to use Copilot" med en
+	// inloggningsknapp).
+	//
+	// I Tungsten finns inget konto att logga in pa. Bada modellerna foljer med
+	// i installern och kor mot 127.0.0.1. En inloggningsprompt vore inte bara
+	// overflodig -- den vore en LOGN om vad produkten ar, och den var nabar i
+	// det packade bygget trots att product.json saknar defaultChatAgent.
+	//
+	// Grinden sitter har och inte i varje yta for sig, for det ar har beslutet
+	// FATTAS. Neutraliserar man ytorna en och en dyker nasta upp vid nasta
+	// upstream-merge.
+	//
+	// context lases medvetet inte: ingen ingang far kunna satta tillbaka true.
+	void context;
+	return false;
 }
 
 export interface IChatEntitlementService {

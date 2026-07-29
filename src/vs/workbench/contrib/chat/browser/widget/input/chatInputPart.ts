@@ -761,7 +761,19 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		this._emptyInputAttachments = this._register(emptyInputAttachments(StorageScope.WORKSPACE, StorageTarget.USER, this.storageService));
 
 		this._contextResourceLabels = this._register(this.instantiationService.createInstance(ResourceLabels, { onDidChangeVisibility: this._onDidChangeVisibility.event }));
-		this._currentModeObservable = observableValue<IChatMode>('currentMode', this.options.defaultMode ?? ChatMode.Agent);
+		// TUNGSTEN: Ask, inte Agent, som startlage.
+		//
+		// Det har var den ANDRA kallan till "Build with Agent" i det packade
+		// bygget, och den overlevde att Agent togs bort ur lageslistan: raden ar
+		// en hardkodad default som aldrig fragar vilka lagen som faktiskt finns.
+		// chatWidget.ts valjer valkomstrubrik pa currentModeKind, sa panelen
+		// halsade med agent-rubriken innan anvandaren rort nagot.
+		//
+		// Alla andra vagar in i ett lage gar via setChatMode(), vars
+		// fallback-kedja (findModeById(Agent) ?? ChatMode.Ask) numera landar pa
+		// Ask av sig sjalv -- se findModeById() i chatModes.ts. Den har raden ar
+		// den enda som gick forbi kedjan.
+		this._currentModeObservable = observableValue<IChatMode>('currentMode', this.options.defaultMode ?? ChatMode.Ask);
 		const localModes = this.chatModeService.createModes(LocalChatSessionUri.getNewSessionUri());
 		this._currentChatModes.value = localModes;
 		this._currentChatModesObservable = observableValue<IChatModes>('currentChatModes', localModes);

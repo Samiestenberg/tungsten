@@ -141,7 +141,16 @@ class ChatModes extends Disposable implements IChatModes {
 	}
 
 	findModeById(id: string | ChatModeKind): IChatMode | undefined {
-		return this.getBuiltinModes().find(mode => mode.id === id) ?? this._customModeInstances.get(id);
+		// TUNGSTEN: gar genom getCustomModes() i stallet for rakt in i
+		// _customModeInstances.
+		//
+		// Upstream slog upp instansen direkt, vilket betydde att ett anpassat
+		// lage var natt VIA ID aven nar det inte offererades i valjaren -- en
+		// aterstalld session som mindes ett lage-id hade fatt tillbaka det.
+		// Lagesvaljaren ar en yta; id-uppslaget ar en annan. Bada maste saga nej,
+		// annars ar neutraliseringen bara halv.
+		return this.getBuiltinModes().find(mode => mode.id === id)
+			?? this.getCustomModes().find(mode => mode.id === id);
 	}
 
 	findModeByName(name: string): IChatMode | undefined {
@@ -296,29 +305,35 @@ class ChatModes extends Disposable implements IChatModes {
 	}
 
 	private getBuiltinModes(): IChatMode[] {
-		const builtinModes: IChatMode[] = [
-			ChatMode.Ask,
-		];
-
-		// Include Agent mode if:
-		// - It's enabled (hasToolsAgent is true), OR
-		// - It's disabled by policy (so we can show it with a lock icon)
-		// But hide it if the user manually disabled it via settings
-		if (this.chatAgentService.hasToolsAgent || this.isAgentModeDisabledByPolicy()) {
-			builtinModes.unshift(ChatMode.Agent);
-		}
-		builtinModes.push(ChatMode.Edit);
-		return builtinModes;
+		// TUNGSTEN: BARA Ask. Inget Agent-lage, inget Edit-lage.
+		//
+		// Den har listan matar lagesvaljaren i chattens inmatningsrad, och den
+		// avgor ocksa chattens VALKOMSTRUBRIK: med Agent som forsta lage skrev
+		// chatWidget.ts ut "Build with Agent". Bada syntes i det packade bygget.
+		//
+		// Varfor de ar borta och inte bara gomda: Tungstens chatt ar en GUIDE
+		// till editorn som kor pa en lokal 3B. Den laser inga filer, skriver
+		// inga filer och har inga verktyg -- se extensions/freya/src/guideChat.ts.
+		// Ett Agent-lage hade lovat en formaga som inte finns, och ett Edit-lage
+		// hade konkurrerat med inline edit (Ctrl+K), som ar den yta som faktiskt
+		// har markeringen och diffen att godkanna.
+		//
+		// ChatMode.Agent och ChatMode.Edit ar KVAR i koden och ororda. Det ar
+		// den har listan som avgor vad som ar natt, inte om typerna existerar.
+		return [ChatMode.Ask];
 	}
 
 	private getCustomModes(): IChatMode[] {
-		// Show custom modes when agent mode is enabled OR when disabled by policy (to show them in the policy-managed group)
-		return this.chatAgentService.hasToolsAgent || this.isAgentModeDisabledByPolicy() ? Array.from(this._customModeInstances.values()) : [];
+		// TUNGSTEN: inga anpassade lagen heller. De ar agent-lagets
+		// utbyggnadspunkt ("Configure Custom Agents..."), och utan agent-lage
+		// har de inget att bygga ut.
+		return [];
 	}
 
-	private isAgentModeDisabledByPolicy(): boolean {
-		return this.configurationService.inspect<boolean>(ChatConfiguration.AgentEnabled).policyValue === false;
-	}
+	// TUNGSTEN: isAgentModeDisabledByPolicy() togs bort HAR (den fanns bara for
+	// att avgora om Agent-laget skulle visas med hanglas). Motsvarande metod i
+	// ChatModeService nedan ar KVAR och anvands fortfarande for kontextnyckeln.
+	// noUnusedLocals gor att en oanvand privat metod inte kan lamnas kvar.
 }
 
 export class ChatModeService extends Disposable implements IChatModeService {
