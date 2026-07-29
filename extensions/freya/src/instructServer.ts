@@ -63,6 +63,15 @@ function cfg() {
 
 export function instructPort(): number {
   const port = cfg().get<number>("instruct.port") ?? 11436;
+  // `?? 11436` fångar bara att inställningen SAKNAS. Ett handredigerat
+  // settings.json kan innehålla 0, -1, 70000 eller "11436" som sträng, och då
+  // hade vi byggt en URL som http://127.0.0.1:0 och väntat ut hela
+  // hälsokontrollen på något som aldrig kan svara. Port 0 är särskilt lömsk:
+  // llama-server tar då en slumpmässig ledig port och startar helt normalt,
+  // medan vi ringer :0.
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    return 11436;
+  }
   // Kollisionerna är inte hypotetiska: 11434 är Ollamas och 11435 är vår egen
   // FIM-server. Bättre att tyst gå tillbaka till 11436 än att låta någon peka
   // hit av misstag.

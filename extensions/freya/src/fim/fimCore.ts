@@ -66,6 +66,46 @@ export async function runFim(req: FimRequest): Promise<string | undefined> {
 }
 
 /**
+ * Klipper bort en ENSAM surrogat i vardera änden.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR -- uppmätt, inte befarat.
+ *
+ * JavaScript-strängar är UTF-16, och slice() räknar KODENHETER. Ett tecken
+ * utanför BMP (emoji, en del matematiksymboler, CJK ext-B) består av två
+ * kodenheter, och ett klipp på teckenbudgeten kan hamna mitt emellan dem.
+ * Då börjar eller slutar biten med en halv teckenkod.
+ *
+ * Probe mot fimContext() med en emoji precis på 1000-teckensgränsen:
+ *
+ *   suffix (klipp vid 1000)   len=1000  lone-surrogate=true
+ *   JSON.stringify            "\ud83dabc"
+ *
+ * JSON:en blir syntaktiskt giltig, så inget fel märks hos oss -- men det som
+ * går över tråden är en teckenkod som inte kan kodas som UTF-8. Vad
+ * llama.cpp:s tokenizer gör med den är inte vår sak att gissa; ett förslag som
+ * beror på var i filen en emoji råkar ligga är en bugg oavsett vilket.
+ *
+ * Fixen kostar två teckenkontroller per anrop och tar bort hela frågan.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+function trimLoneSurrogates(s: string): string {
+  let start = 0;
+  let end = s.length;
+  // Inleds biten av en LÅG surrogat är dess höga hälft kvar före klippet.
+  const first = s.charCodeAt(0);
+  if (first >= 0xdc00 && first <= 0xdfff) {
+    start = 1;
+  }
+  // Avslutas biten av en HÖG surrogat ligger dess låga hälft efter klippet.
+  const last = s.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) {
+    end -= 1;
+  }
+  return start === 0 && end === s.length ? s : s.slice(start, end);
+}
+
+/**
  * Kontextfönstret runt en position. Samma budget för alla FIM-ytor, så en
  * höjning av freya.autocomplete.prefixChars gäller dem allihop.
  */
@@ -77,8 +117,8 @@ export function fimContext(
   const maxSuffix = cfg().get<number>("autocomplete.suffixChars") ?? 1000;
   const text = document.getText();
   return {
-    prefix: text.slice(Math.max(0, offset - maxPrefix), offset),
-    suffix: text.slice(offset, offset + maxSuffix),
+    prefix: trimLoneSurrogates(text.slice(Math.max(0, offset - maxPrefix), offset)),
+    suffix: trimLoneSurrogates(text.slice(offset, offset + maxSuffix)),
   };
 }
 

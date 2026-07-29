@@ -34,6 +34,13 @@ function cfg() {
 
 export function localPort(): number {
   const port = cfg().get<number>("local.port") ?? 11435;
+  // Samma spärr som i instruct-lanen: `??` fångar bara att inställningen
+  // saknas, inte att den är orimlig. Se instructPort() för varför port 0 är
+  // värst av dem -- llama-server startar då på en slumpmässig port och ser
+  // helt frisk ut medan vi ringer :0.
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    return 11435;
+  }
   // 11434 är Ollamas. Att spawna vår server där skulle antingen krocka med
   // användarens Ollama eller -- värre -- få oss att prata med den i tron att
   // det är vår inbäddade modell.
