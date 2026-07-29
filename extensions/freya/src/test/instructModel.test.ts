@@ -21,7 +21,14 @@ import 'mocha';
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import { cacheKey, clampToLines, firstParagraph, stripCodeFences } from '../instructText.js';
+import {
+	cacheKey,
+	clampToLines,
+	commonIndent,
+	firstParagraph,
+	reindent,
+	stripCodeFences,
+} from '../instructText.js';
 
 suite('Instruct: markdown-staket', () => {
 
@@ -93,6 +100,66 @@ suite('Instruct: markdown-staket', () => {
 		// Ett svar med förklaring först är inte kod och ska inte klippas isär.
 		const raw = 'Here you go:\n```ts\nconst x = 1;\n```';
 		assert.strictEqual(stripCodeFences(raw), raw);
+	});
+});
+
+suite('Instruct: indenteringen tillbaka', () => {
+
+	// Modellen svarar pa kolumn noll aven nar fragmentet den fick var
+	// indenterat. Uppmatt, inte befarat: en markerad metodkropp kom tillbaka
+	// utan sin indentering, och att skriva in den rakt av hade platt-tryckt
+	// filen.
+
+	test('gemensam indentering hoppar over rad 0', () => {
+		// Rad 0 i en markering borjar oftast vid forsta TECKNET, inte vid
+		// radens borjan -- dess "indentering" ar tom och skulle dra ner
+		// namnaren till noll for hela blocket.
+		const text = 'function f() {\n    return 1;\n    // done\n}';
+		assert.strictEqual(commonIndent(text), '');
+		const body = 'return 1;\n    const x = 2;\n    return x;';
+		assert.strictEqual(commonIndent(body), '    ');
+	});
+
+	test('gemensam indentering ar den KORTASTE, inte den forsta', () => {
+		assert.strictEqual(commonIndent('a\n\t\tdjupt\n\tgrunt'), '\t');
+	});
+
+	test('REFERENSFALL: 3B svarade pa kolumn noll', () => {
+		// Ordagrant format fran modellen for en markering som lag tva
+		// mellanslag in.
+		const proposed = 'function getUsers(ids: number[]) {\n  return ids.map(id => db.find(id));\n}';
+		const out = reindent(proposed, '  ', true);
+		assert.strictEqual(
+			out,
+			'  function getUsers(ids: number[]) {\n    return ids.map(id => db.find(id));\n  }'
+		);
+	});
+
+	test('markering som borjar mitt pa en rad far INTE indentering pa rad 0', () => {
+		// Indenteringen star redan kvar i dokumentet fore markeringen.
+		const out = reindent('foo();\nbar();', '    ', false);
+		assert.strictEqual(out, 'foo();\n    bar();');
+	});
+
+	test('tomma rader bar inga blanktecken', () => {
+		const out = reindent('a();\n\nb();', '  ', true);
+		assert.strictEqual(out, '  a();\n\n  b();');
+	});
+
+	test('modellens egen indentering rensas innan var laggs pa', () => {
+		// Annars adderas de tva och koden glider at hoger for varje omgang.
+		const proposed = 'if (x) {\n    doThing();\n}';
+		assert.strictEqual(reindent(proposed, '\t', true), '\tif (x) {\n\t    doThing();\n\t}');
+	});
+
+	test('tom indentering lamnar koden som den ar', () => {
+		const code = 'const x = 1;\nconst y = 2;';
+		assert.strictEqual(reindent(code, '', true), code);
+	});
+
+	test('en enda rad', () => {
+		assert.strictEqual(reindent('return 1;', '    ', true), '    return 1;');
+		assert.strictEqual(reindent('return 1;', '    ', false), 'return 1;');
 	});
 });
 

@@ -28,7 +28,14 @@ import { stripCodeFences } from "./instructText.js";
 // De rena textfunktionerna bor i instructText.ts (ingen vscode-import, går att
 // testa utan extension host). Vi re-exporterar dem så att anropare bara behöver
 // känna till ETT ställe för instruct-lanen.
-export { cacheKey, clampToLines, firstParagraph, stripCodeFences } from "./instructText.js";
+export {
+  cacheKey,
+  clampToLines,
+  commonIndent,
+  firstParagraph,
+  reindent,
+  stripCodeFences,
+} from "./instructText.js";
 
 export interface InstructOptions {
   /** Systeminstruktionen. Håll den stram -- 3B tappar långa regelverk. */

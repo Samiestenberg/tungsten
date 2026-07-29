@@ -21,6 +21,7 @@ import { initInstructServer } from "./instructServer.js";
 import { registerExplain } from "./explain.js";
 import { registerNextEdit } from "./fim/nextEdit.js";
 import { registerSyntaxFix } from "./fim/syntaxFix.js";
+import { registerInlineEdit } from "./inlineEdit.js";
 
 export function activate(ctx: vscode.ExtensionContext): void {
   // ALLT NEDAN REGISTRERAS ÄVEN I EN OBETRODD MAPP. Tillägget deklarerar
@@ -60,6 +61,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   registerSecretsGuard(ctx);
   registerStagedSecretScan(ctx);
   registerExplain(ctx);
+  registerInlineEdit(ctx);
 
   // Hälsokoll vid uppstart. Icke-blockerande: Freya aktiveras även om Ollama
   // är nere, och läget syns som en statusrad bara när något saknas.

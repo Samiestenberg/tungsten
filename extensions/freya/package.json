@@ -107,12 +107,24 @@
         "category": "Freya"
       },
       {
+        "command": "freya.inlineEdit",
+        "title": "Rewrite selection with an instruction",
+        "category": "Freya",
+        "icon": "$(sparkle)"
+      },
+      {
         "command": "freya.syntaxFix.dismiss",
         "title": "Dismiss the suggested syntax fix",
         "category": "Freya"
       }
     ],
     "keybindings": [
+      {
+        "command": "freya.inlineEdit",
+        "key": "ctrl+k ctrl+i",
+        "mac": "cmd+k cmd+i",
+        "when": "editorTextFocus && !editorReadonly"
+      },
       {
         "command": "freya.syntaxFix.accept",
         "key": "tab",
@@ -127,9 +139,14 @@
     "menus": {
       "editor/context": [
         {
+          "command": "freya.inlineEdit",
+          "when": "editorTextFocus && !editorReadonly",
+          "group": "freya@1"
+        },
+        {
           "command": "freya.explainSelection",
           "when": "editorTextFocus",
-          "group": "freya@1"
+          "group": "freya@2"
         }
       ],
       "scm/title": [
