@@ -60,15 +60,43 @@ export const INSTRUCT_DOWNLOAD: DownloadableModel = {
   label: "Granite-3B-Code-Instruct (2.1 GB)",
 };
 
+/**
+ * 1.5B:n. GÅR INTE ATT HÄMTA -- posten är beskrivande, inte en väg.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DEN TOMMA HASHEN, och varför den får stå kvar.
+ *
+ * Frågan var om sha256: "" kan nå en nedladdningsväg, för då hade vi hämtat
+ * en GGUF över nätet UTAN att kontrollera den och sedan spawnat den som en
+ * barnprocess. Svaret är nej, och det är kontrollerat och inte resonerat:
+ *
+ *   offerDownload() anropas på exakt två ställen -- ensureInstructReady() i
+ *   instructModel.ts och kommandot freya.downloadInstructModel -- och BÅDA
+ *   skickar INSTRUCT_DOWNLOAD. COMPLETION_DOWNLOAD har noll anropsställen i
+ *   hela tillägget.
+ *
+ * Men "ingen anropar den idag" är ett svagt skydd: konstanten är exporterad,
+ * och den som kopplar in den om ett år har ingen anledning att misstänka att
+ * hashkontrollen tyst hoppas över. Så grinden sitter i downloadModel() i
+ * stället, där den inte går att missa. Se kommentaren där.
+ *
+ * Storleken var dessutom FEL -- 986 048 000 mot filens faktiska 986 048 512 --
+ * vilket är ett bevis i sig på att posten aldrig kördes: en hämtning hade
+ * fallit på storlekskontrollen varje gång. Rättad, så att den som väcker
+ * posten börjar från något sant.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
 export const COMPLETION_DOWNLOAD: DownloadableModel = {
   subdir: "model",
   file: "qwen2.5-coder-1.5b-base-q4_k_m.gguf",
   urlPath:
     "Qwen/Qwen2.5-Coder-1.5B-GGUF/resolve/main/qwen2.5-coder-1.5b-q4_k_m.gguf",
-  bytes: 986_048_000,
-  // Tom = ingen hashkontroll. 1.5B:n buntas ALLTID i båda installerformerna,
-  // så den här posten är en nödutgång för ett dev-träd, inte en normal väg.
-  // Hellre en ärlig tom sträng än en påhittad hash.
+  bytes: 986_048_512,
+  // Tom = INGEN hash är känd för den här filen. 1.5B:n buntas alltid i båda
+  // installerformerna, så den har aldrig behövt hämtas och ingen hash har
+  // därför mätts upp. Hellre en ärlig tom sträng än en påhittad -- och
+  // downloadModel() VÄGRAR hämta en modell utan hash, så tomheten kan inte
+  // bli till en tyst genväg.
   sha256: "",
   label: "Qwen2.5-Coder-1.5B (0.9 GB)",
 };
@@ -163,6 +191,21 @@ async function downloadModel(
   progress: vscode.Progress<{ message?: string; increment?: number }>,
   token: vscode.CancellationToken
 ): Promise<void> {
+  // INGEN HASH, INGEN HÄMTNING. En modell som hämtas över nätet och sedan
+  // spawnas som barnprocess måste vara pinnad; en post utan sha256 får därför
+  // inte gå att ladda ner alls, oavsett hur den kom hit.
+  //
+  // Grinden sitter här och inte hos anroparen med flit. COMPLETION_DOWNLOAD har
+  // en tom hash och noll anropsställen idag (se kommentaren där), men den är
+  // exporterad -- och den som kopplar in den om ett år ska mötas av ett tydligt
+  // fel, inte av en tyst nedladdning som hoppar över kontrollen.
+  if (!model.sha256) {
+    throw new Error(
+      `${model.label} has no pinned SHA-256, so it cannot be downloaded. ` +
+        `It ships inside the installer instead.`
+    );
+  }
+
   const url = downloadUrlFor(model);
   const part = `${dest}.part`;
   fs.mkdirSync(path.dirname(dest), { recursive: true });

@@ -25,9 +25,10 @@
 import * as vscode from "vscode";
 import {
   clampToLines,
+  ensureInstructReady,
   instructAvailable,
   instructCode,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
 } from "./instructModel.js";
 import { isSyntaxDiagnostic } from "./fim/syntaxSignal.js";
 import { confirmViaDiff } from "./preview.js";
@@ -277,8 +278,14 @@ export function registerSemanticFix(ctx: vscode.ExtensionContext): void {
           return;
         }
 
-        if (!instructAvailable()) {
-          vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+        // ensureInstructReady() HÄR, men instructAvailable() i CodeAction-
+        // providern ovan. Skillnaden är inte godtycklig: det här är
+        // kommandohandlaren, alltså något användaren själv utlöste (glödlampan
+        // eller "Freya: Fix this error" i paletten), och då är en fråga om att
+        // hämta modellen rätt svar. Providern ritar glödlampan och körs vid
+        // varje diagnostikuppdatering -- den får aldrig öppna en dialog.
+        if (!(await ensureInstructReady())) {
+          vscode.window.showWarningMessage(`Freya: ${instructUnavailableMessage()}`);
           return;
         }
 

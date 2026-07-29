@@ -20,6 +20,7 @@
 import {
   beginInstructCall,
   endInstructCall,
+  instructConflictingPort,
   instructEndpoint,
   instructInstalled,
   invalidateInstructEndpoint,
@@ -284,6 +285,35 @@ export async function instructCode(
 ): Promise<string | undefined> {
   const raw = await instructOneShot(opts);
   return raw === undefined ? undefined : stripCodeFences(raw);
+}
+
+/**
+ * Beskedet när instruct-lanen inte gick att använda -- med RÄTT orsak.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR DEN HÄR FUNKTIONEN FINNS. INSTRUCT_MISSING säger "modellen är inte
+ * installerad i det här bygget, kör fetchLocalRuntime.ts". Det är sant i ett
+ * dev-träd och var det enda vi sa i alla lägen.
+ *
+ * Men det finns ett andra sätt att misslyckas, och då är meddelandet direkt
+ * VILSELEDANDE: modellen ligger på disk, allt är installerat, men någon annan
+ * process håller porten. Användaren blir tillsagd att hämta något som redan
+ * finns, i stället för att byta port.
+ *
+ * Fallet är inte hypotetiskt -- se portListening() i runtimeLayout.ts, där det
+ * är uppmätt vad som faktiskt händer på Windows när porten är tagen.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+export function instructUnavailableMessage(): string {
+  const port = instructConflictingPort();
+  if (port !== undefined) {
+    return (
+      `Port ${port} is already in use by another program, so Tungsten's 3B ` +
+      `instruct model could not start. Close whatever is using it, or set ` +
+      `freya.instruct.port to a free port.`
+    );
+  }
+  return INSTRUCT_MISSING;
 }
 
 /** Beskedet när 3B:n saknas. Ett ställe, samma ordval överallt. */

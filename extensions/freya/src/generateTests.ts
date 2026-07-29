@@ -21,7 +21,7 @@ import {
   ensureInstructReady,
   clampToLines,
   instructCode,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
 } from "./instructModel.js";
 import {
   FALLBACK_FRAMEWORK,
@@ -170,7 +170,7 @@ export function registerGenerateTests(ctx: vscode.ExtensionContext): void {
       }
 
       if (!(await ensureInstructReady())) {
-        vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+        vscode.window.showWarningMessage(`Freya: ${instructUnavailableMessage()}`);
         return;
       }
 

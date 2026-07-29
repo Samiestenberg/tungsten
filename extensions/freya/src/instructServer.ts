@@ -23,7 +23,12 @@
 import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as path from "path";
-import { derivedApiKey, findRuntime, probeReady } from "./runtimeLayout.js";
+import {
+  derivedApiKey,
+  findRuntime,
+  portListening,
+  probeReady,
+} from "./runtimeLayout.js";
 
 export interface InstructEndpoint {
   /** t.ex. http://127.0.0.1:11436 */
@@ -46,16 +51,31 @@ const HEALTH_TIMEOUT_MS = 90_000;
 /** Standardtystnad innan modellen släpps ur minnet. */
 const DEFAULT_IDLE_UNLOAD_MS = 5 * 60_000;
 
+/**
+ * Hur länge vi ger en FRÄMMANDE server på vår port chansen att visa sig vara
+ * vår. Se waitForForeignServer() för varför det är sekunder och inte minuter.
+ */
+const FOREIGN_SERVER_GRACE_MS = 5_000;
+
 function cfg() {
   return vscode.workspace.getConfiguration("freya");
 }
 
 export function instructPort(): number {
   const port = cfg().get<number>("instruct.port") ?? 11436;
-  // Kollisionerna är inte hypotetiska. 11434 är Ollamas och 11435 är vår egen
-  // FIM-server; hamnar vi på någon av dem pratar vi med FEL modell och får
-  // svar som ser rimliga ut men inte är det. Bättre att tyst gå tillbaka till
-  // 11436 än att felsöka den klassen av bugg.
+  // Kollisionerna är inte hypotetiska: 11434 är Ollamas och 11435 är vår egen
+  // FIM-server. Bättre att tyst gå tillbaka till 11436 än att låta någon peka
+  // hit av misstag.
+  //
+  // RÄTTELSE av vad som stod här: följden av en krock är INTE att vi "pratar
+  // med fel modell och får svar som ser rimliga ut men inte är det". Det kan
+  // inte hända, och det är den härledda API-nyckelns förtjänst -- en annan
+  // server har en annan nyckel och svarar 401 i stället för att generera. Se
+  // derivedApiKey() i runtimeLayout.ts.
+  //
+  // Det som FAKTISKT händer vid en krock står i portListening(), och det är
+  // uppmätt: den andra llama-servern binder utan att klaga men får aldrig en
+  // anslutning. Hanteringen sitter i start().
   return port === 11434 || port === 11435 ? 11436 : port;
 }
 
@@ -74,6 +94,11 @@ class InstructModelServer {
   private starting: Promise<InstructEndpoint | undefined> | undefined;
   /** Sätts bara av fel som INTE går över av sig själv (saknad runtime, avstängd). */
   private failed = false;
+  /**
+   * Porten någon annan höll, när DET var orsaken. Skiljer "modellen saknas" från
+   * "porten är upptagen" -- två helt olika saker för användaren att göra något åt.
+   */
+  private portConflict: number | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
   /** Anrop som pågår just nu. Idle-timern får aldrig riva under ett svar. */
   private inFlight = 0;
@@ -120,6 +145,10 @@ class InstructModelServer {
 
   get isUnavailable(): boolean {
     return this.failed;
+  }
+
+  get conflictingPort(): number | undefined {
+    return this.portConflict;
   }
 
   private clearIdleTimer(): void {
@@ -217,6 +246,45 @@ class InstructModelServer {
     return this.starting;
   }
 
+  /**
+   * Kort nådatid för att servern på porten ska visa sig vara VÅR.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * VARFÖR BARA NÅGRA SEKUNDER, och inte hela HEALTH_TIMEOUT_MS.
+   *
+   * Den uppenbara farhågan är att ett annat fönster just startat servern och
+   * fortfarande läser in modellen -- då vore det fel att ge upp direkt. Men
+   * den fasen finns inte i den llama-server vi buntar. Ur dess egen logg:
+   *
+   *   srv  load_model: loading model '...granite-3b...gguf'
+   *   srv  llama_server: model loaded
+   *   srv  llama_server: listening on http://127.0.0.1:18437
+   *
+   * Den BINDER PORTEN FÖRST EFTER att modellen är inläst. Lyssnar någon på
+   * porten är den alltså redan färdigladdad, och svarar den då 401 på vår
+   * nyckel är det någon annans server som aldrig kommer att bli vår.
+   *
+   * Nådatiden står kvar ändå, kort, som billig försäkring: skulle en framtida
+   * llama.cpp börja binda tidigare blir det här en fördröjning på några
+   * sekunder i stället för ett felaktigt "porten är upptagen".
+   * ─────────────────────────────────────────────────────────────────────
+   */
+  private async waitForForeignServer(
+    baseUrl: string,
+    apiKey: string
+  ): Promise<boolean> {
+    const deadline = Date.now() + FOREIGN_SERVER_GRACE_MS;
+    for (;;) {
+      if (await probeReady(baseUrl, apiKey)) {
+        return true;
+      }
+      if (Date.now() >= deadline) {
+        return false;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
   private async start(): Promise<InstructEndpoint | undefined> {
     if (cfg().get<boolean>("instruct.enabled") === false) {
       this.log.info("instruct model disabled via freya.instruct.enabled");
@@ -247,6 +315,34 @@ class InstructModelServer {
       this.endpoint = { baseUrl, apiKey, modelName };
       this.armIdleTimer();
       return this.endpoint;
+    }
+
+    // NÅGON ANNAN sitter på porten. Att spawna då är meningslöst: på Windows
+    // binder llama-server utan att klaga men får aldrig en anslutning -- den
+    // första socketen behåller porten (uppmätt, se portListening()). Vi hade
+    // alltså läst in 2 GB i en process som inte kan svara.
+    //
+    // Men det kan också vara ETT ANNAT FÖNSTER vars server fortfarande läser in
+    // modellen; då ska vi vänta ut den och adoptera, inte vägra. Så: probea
+    // vidare utan att spawna, och skilj på fallen först när tiden är ute.
+    if (await portListening(port)) {
+      this.log.info(
+        `port ${port} is already in use -- waiting to see if it becomes ours`
+      );
+      const shared = await this.waitForForeignServer(baseUrl, apiKey);
+      if (shared) {
+        this.log.info(`adopted the llama-server on ${baseUrl}`);
+        this.endpoint = { baseUrl, apiKey, modelName };
+        this.armIdleTimer();
+        return this.endpoint;
+      }
+      this.log.error(
+        `port ${port} is held by another process that is not Freya's instruct ` +
+          `server. Set freya.instruct.port to a free port.`
+      );
+      this.portConflict = port;
+      this.failed = true;
+      return undefined;
     }
 
     const args = [
@@ -355,6 +451,14 @@ export function endInstructCall(): void {
  */
 export function invalidateInstructEndpoint(): void {
   server?.invalidateEndpoint();
+}
+
+/**
+ * Porten som var upptagen, om DET var varför lanen inte gick att starta.
+ * undefined = något annat (eller inget) var fel.
+ */
+export function instructConflictingPort(): number | undefined {
+  return server?.conflictingPort;
 }
 
 /** Nuvarande läge UTAN att starta något. För statusraden och hälsokollen. */

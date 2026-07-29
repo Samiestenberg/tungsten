@@ -264,9 +264,41 @@ suite('Privacy: modellhamtningen ar konfigurerbar och verifierad', () => {
 		const src = downloaderSource();
 		assert.ok(/written !== model\.bytes/.test(src), 'storleken kontrolleras inte');
 		assert.ok(/actual !== model\.sha256/.test(src), 'sha256 kontrolleras inte');
-		// .part -> rename sker FORST efter kontrollerna.
+		// .part -> rename sker FORST efter kontrollerna. Mat mot SJALVA
+		// JAMFORELSEN och inte mot forsta forekomsten av 'model.sha256' -- den
+		// ligger numera i vagran-att-hamta-utan-hash-grinden hogre upp, och da
+		// hade assertionen blivit sann av fel skal.
 		const rename = src.indexOf('renameSync');
-		assert.ok(rename > src.indexOf('model.sha256'), 'filen byter namn innan den verifierats');
+		const compare = src.indexOf('actual !== model.sha256');
+		assert.ok(compare >= 0 && rename > compare, 'filen byter namn innan den verifierats');
+	});
+
+	test('KRITISKT: en modell UTAN pinnad hash gar inte att hamta alls', () => {
+		// COMPLETION_DOWNLOAD har sha256: "" -- ingen hash ar uppmatt for den,
+		// eftersom 1.5B:n alltid buntas. Den har noll anropsstallen idag
+		// (offerDownload anropas bara med INSTRUCT_DOWNLOAD, kontrollerat), men
+		// konstanten ar exporterad. Utan den har grinden hade den som kopplar in
+		// den om ett ar fatt en TYST hamtning utan hashkontroll, och filen spawnas
+		// sedan som barnprocess.
+		//
+		// Grinden ska ligga i downloadModel och FORE natverksanropet.
+		const src = downloaderSource();
+		const guard = src.indexOf('if (!model.sha256)');
+		const fetchCall = src.indexOf('await fetch(url');
+		assert.ok(guard >= 0, 'ingen vagran att hamta en modell utan pinnad hash');
+		assert.ok(
+			fetchCall >= 0 && guard < fetchCall,
+			'hash-grinden ligger efter natverksanropet'
+		);
+	});
+
+	test('den ohamtbara posten ljuger inte om storleken', () => {
+		// Storleken stod som 986 048 000 medan filen ar 986 048 512. Det var i sig
+		// beviset for att posten aldrig kordes -- en hamtning hade fallit pa
+		// storlekskontrollen varje gang. Ratt varde nu, sa den som vacker posten
+		// borjar fran nagot sant.
+		const src = downloaderSource();
+		assert.ok(/bytes: 986_048_512/.test(src), 'fel storlek pa 1.5B-posten');
 	});
 
 	test('hamtningen sker aldrig utan att anvandaren sagt ja', () => {

@@ -55,7 +55,7 @@ import {
   ensureInstructReady,
   clampToLines,
   instructCode,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
   reindent,
 } from "./instructModel.js";
 import { confirmViaDiff } from "./preview.js";
@@ -123,7 +123,7 @@ export async function runInlineEdit(preset?: string): Promise<void> {
   }
 
   if (!(await ensureInstructReady())) {
-    vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+    vscode.window.showWarningMessage(`Freya: ${instructUnavailableMessage()}`);
     return;
   }
 

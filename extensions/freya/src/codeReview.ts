@@ -33,7 +33,7 @@ import {
   ensureInstructReady,
   clampToLines,
   instructOneShot,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
 } from "./instructModel.js";
 import { showResult } from "./preview.js";
 
@@ -102,7 +102,7 @@ export function registerCodeReview(ctx: vscode.ExtensionContext): void {
 			}
 
 			if (!(await ensureInstructReady())) {
-				vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+				vscode.window.showWarningMessage(`Freya: ${instructUnavailableMessage()}`);
 				return;
 			}
 

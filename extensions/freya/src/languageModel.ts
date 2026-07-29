@@ -21,9 +21,9 @@
 // skicka verktygsscheman vi inte kan hantera.
 import * as vscode from "vscode";
 import {
-  instructAvailable,
+  ensureInstructReady,
   instructOneShot,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
   type InstructTurn,
 } from "./instructModel.js";
 import { instructState } from "./instructServer.js";
@@ -101,8 +101,12 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
       // Ollama-instans vi inte startat. Nu går det till en process vi själva
       // startat på 127.0.0.1 med innehåll användaren själv skrev in. Det finns
       // inget att läcka.
-      if (!instructAvailable()) {
-        progress.report(new vscode.LanguageModelTextPart(INSTRUCT_MISSING));
+      // Samma resonemang som i guideChat.ts: ytan ar anvandarinitierad, sa den
+      // far erbjuda hamtningen i stallet for att saga "inte installerad".
+      // provideLanguageModelChatInformation ovan gor det INTE -- den fragar bara
+      // instructState() och far aldrig oppna en dialog.
+      if (!(await ensureInstructReady())) {
+        progress.report(new vscode.LanguageModelTextPart(instructUnavailableMessage()));
         return;
       }
 

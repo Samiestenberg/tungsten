@@ -18,6 +18,7 @@
 import * as vscode from "vscode";
 import * as crypto from "crypto";
 import * as fs from "fs";
+import * as net from "net";
 import * as path from "path";
 
 const SERVER_EXE = "llama-server.exe";
@@ -149,6 +150,46 @@ export function derivedApiKey(modelPath: string): string {
 		.update(`freya-local:${modelPath}:${vscode.env.machineId}`)
 		.digest("hex")
 		.slice(0, 32);
+}
+
+/**
+ * Lyssnar NÅGON på porten? Säger inget om VEM -- bara att den är upptagen.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR DEN BEHÖVS -- uppmätt på Windows, inte antaget.
+ *
+ * Det stod tidigare i instructPort() att en portkrock skulle betyda att vi
+ * pratar med fel modell. Det stämmer inte, och det som faktiskt händer är
+ * värre på ett annat sätt. Mätning med två llama-server på samma port:
+ *
+ *   Den andra processen klagar INTE. Den skriver "model loaded" och
+ *   "listening on http://127.0.0.1:18437" precis som vanligt -- men det finns
+ *   bara EN lyssnande socket, och den FÖRSTA behåller den. Alla anrop går till
+ *   den som hann först; den andra får aldrig en enda anslutning.
+ *
+ * Följden i den gamla koden: vi läste in 2 GB i en process som inte kunde ta
+ * emot något, probade i 90 sekunder mot någon annans server som svarade 401 på
+ * vår nyckel, gav upp och sa "the 3B instruct model is not installed in this
+ * build" -- alltså fel diagnos, efter en och en halv minuts tystnad.
+ *
+ * Att vi inte fick FEL MODELL är den härledda API-nyckelns förtjänst: någon
+ * annans server har en annan nyckel och svarar 401 i stället för att generera.
+ * Den delen av konstruktionen höll. Se derivedApiKey() ovan.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+export function portListening(port: number, timeoutMs = 400): Promise<boolean> {
+	return new Promise<boolean>((resolve) => {
+		const socket = new net.Socket();
+		const done = (answer: boolean) => {
+			socket.destroy();
+			resolve(answer);
+		};
+		socket.setTimeout(timeoutMs);
+		socket.once("connect", () => done(true));
+		socket.once("timeout", () => done(false));
+		socket.once("error", () => done(false));
+		socket.connect(port, "127.0.0.1");
+	});
 }
 
 /**

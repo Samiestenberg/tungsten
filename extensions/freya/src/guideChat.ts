@@ -19,9 +19,9 @@
 // feltolka.
 import * as vscode from "vscode";
 import {
-  instructAvailable,
+  ensureInstructReady,
   instructOneShot,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
   type InstructTurn,
 } from "./instructModel.js";
 import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from "./guidePrompt.js";
@@ -90,8 +90,19 @@ export function registerGuideChat(ctx: vscode.ExtensionContext): void {
       // användaren själv skrev i rutan. Grinden hade bara stängt av en
       // hjälpfunktion i precis det läge en ny användare behöver den.
 
-      if (!instructAvailable()) {
-        response.markdown(INSTRUCT_MISSING);
+      // ensureInstructReady() och inte instructAvailable(): på den LILLA
+      // installern finns 3B:n inte på disk vid första körningen, och rätt svar
+      // på en fråga användaren nyss skrev är inte "modellen är inte installerad
+      // i det här bygget -- kör fetchLocalRuntime.ts" utan en fråga om att
+      // hämta den. Det gamla beskedet var dessutom en dev-träds-instruktion
+      // riktad till en slutanvändare.
+      //
+      // Att öppna en modal här är tillåtet av samma skäl som på de fem andra
+      // UI-ytorna: den kommer som svar på något användaren själv gjorde. Det är
+      // hover- och CodeAction-providrarna som aldrig får göra det, för de körs
+      // oavbrutet. Se ensureInstructReady() i instructModel.ts.
+      if (!(await ensureInstructReady())) {
+        response.markdown(instructUnavailableMessage());
         return { errorDetails: { message: "Freya: no local instruct model" } };
       }
 

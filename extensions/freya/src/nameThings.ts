@@ -17,7 +17,7 @@ import {
   ensureInstructReady,
   clampToLines,
   instructOneShot,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
   isIdentifier,
   parseList,
 } from "./instructModel.js";
@@ -119,7 +119,7 @@ export function registerNameThings(ctx: vscode.ExtensionContext): void {
       }
 
       if (!(await ensureInstructReady())) {
-        vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+        vscode.window.showWarningMessage(`Freya: ${instructUnavailableMessage()}`);
         return;
       }
 

@@ -30,7 +30,7 @@ import {
   clampToLines,
   instructAvailable,
   instructOneShot,
-  INSTRUCT_MISSING,
+  instructUnavailableMessage,
 } from "./instructModel.js";
 
 /** Håll prompten liten. 3B har 8192 tokens och ska svara på sekunder. */
@@ -171,7 +171,7 @@ export function registerExplain(ctx: vscode.ExtensionContext): void {
       }
 
       if (!(await ensureInstructReady())) {
-        vscode.window.showWarningMessage(`Freya: ${INSTRUCT_MISSING}`);
+        vscode.window.showWarningMessage(`Freya: ${instructUnavailableMessage()}`);
         return;
       }
 
