@@ -76,21 +76,37 @@ suite('Guide-chatt: prompten ljuger inte om produkten', () => {
 		// edit medan bindningen ar ctrl+k ctrl+i. En guide som skickar folk
 		// till en genvag som inte finns ar samre an ingen guide.
 		const bindings: any[] = manifest().contributes?.keybindings ?? [];
-		const byCommand = new Map(bindings.map((b: any) => [b.command, String(b.key)]));
+		const prompt = GUIDE_SYSTEM.toLowerCase();
 
-		const inlineEdit = byCommand.get('freya.inlineEdit');
-		assert.ok(inlineEdit, 'freya.inlineEdit har ingen tangentbindning');
-		assert.ok(
-			GUIDE_SYSTEM.toLowerCase().includes(inlineEdit!.toLowerCase()),
-			`prompten namner inte den faktiska bindningen ${inlineEdit} for inline edit`
-		);
+		// Ett kommando kan ha FLERA bindningar (inline edit har tva: bar ctrl+k
+		// med markering, och ackordet ctrl+k ctrl+i utan). Varenda en som finns
+		// maste ga att hitta i prompten, annars skickar guiden folk till en
+		// genvag som inte gor det den tror.
+		for (const command of ['freya.inlineEdit', 'freya.refactor']) {
+			const keys = bindings.filter((b: any) => b.command === command).map((b: any) => String(b.key));
+			assert.ok(keys.length > 0, `${command} har ingen tangentbindning`);
+			for (const key of keys) {
+				assert.ok(
+					prompt.includes(key.toLowerCase()),
+					`prompten namner inte den faktiska bindningen "${key}" for ${command}`
+				);
+			}
+		}
+	});
 
-		const refactor = byCommand.get('freya.refactor');
-		assert.ok(refactor, 'freya.refactor har ingen tangentbindning');
+	test('KRITISKT: bara Ctrl+K MED markering far ta ackord-prefixet', () => {
+		// Bar ctrl+k ar prefixet for hela VS Codes ackord-familj. Utan
+		// editorHasSelection i when-uttrycket skulle bindningen svalja ctrl+k
+		// helt och ctrl+k ctrl+s, ctrl+k z osv sluta fungera. Se filhuvudet i
+		// inlineEdit.ts for hur resolvern gor att de tva kan samexistera.
+		const bindings: any[] = manifest().contributes?.keybindings ?? [];
+		const bare = bindings.filter((b: any) => String(b.key).trim() === 'ctrl+k');
+		assert.strictEqual(bare.length, 1, 'forvantade exakt en bar ctrl+k-bindning');
 		assert.ok(
-			GUIDE_SYSTEM.toLowerCase().includes(refactor!.toLowerCase()),
-			`prompten namner inte den faktiska bindningen ${refactor} for refaktorering`
+			String(bare[0].when).includes('editorHasSelection'),
+			`bar ctrl+k saknar editorHasSelection i when: ${bare[0].when}`
 		);
+		assert.strictEqual(bare[0].command, 'freya.inlineEdit');
 	});
 });
 

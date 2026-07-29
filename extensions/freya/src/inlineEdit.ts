@@ -19,6 +19,37 @@
 //      platt-tryckt filen.
 //   3. Diffen först. Ingenting ersätts förrän användaren sett vad som byts ut
 //      och sagt ja.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// TANGENTBINDNINGEN: Ctrl+K, och varför det INTE slår sönder ackorden.
+//
+// package.json binder kommandot TVÅ gånger:
+//
+//   ctrl+k            when: editorTextFocus && editorHasSelection && !editorReadonly
+//   ctrl+k ctrl+i     when: editorTextFocus && !editorReadonly
+//
+// Bar Ctrl+K är prefixet för hela VS Codes ackord-familj (ctrl+k ctrl+s,
+// ctrl+k z, ctrl+k ctrl+o ...), så det ser ut som en kollision. Det är det
+// inte, och skälet står i KeybindingResolver.resolve():
+//
+//   Vid ETT tryck på ctrl+k är pressedChords.length === 1, så lookupMap blir
+//   ALLA bindningar vars första ackord är ctrl+k -- min enkeltangent OCH varje
+//   ctrl+k <x>. _findCommand() går igenom dem BAKIFRÅN och returnerar den
+//   FÖRSTA vars when-uttryck matchar. Sedan:
+//
+//     result.chords.length === 1  ->  KbFound      (kommandot körs direkt)
+//     result.chords.length === 2  ->  MoreChordsNeeded  (ackordläge)
+//
+// MED markering matchar mitt when-uttryck och vinner (extensionbindningar
+// ligger sist i listan) -> inline edit öppnas.
+// UTAN markering faller mitt uttryck bort, en ackordbindning väljs i stället
+// -> ackordläget fungerar precis som förut.
+//
+// PRISET, uttalat: medan text ÄR markerad når man inte ctrl+k-ackorden. Det är
+// samma avvägning Cursor gör. ctrl+k ctrl+i finns kvar som andra bindning, så
+// inline edit går att nå även utan markering (den tar då raden markören står
+// på).
+// ─────────────────────────────────────────────────────────────────────────
 import * as vscode from "vscode";
 import {
   clampToLines,

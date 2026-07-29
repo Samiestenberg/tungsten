@@ -79,13 +79,30 @@ re-checks that the text has not changed since the diff was opened.
 
 | Surface | Keybinding |
 | --- | --- |
-| Rewrite selection with an instruction | `Ctrl+K Ctrl+I` |
+| Rewrite selection with an instruction | **`Ctrl+K`** (with a selection), or `Ctrl+K Ctrl+I` |
 | Refactor presets | `Ctrl+K Ctrl+R` |
 | Fix a semantic error | lightbulb on the error |
 | Accept the ghost-text syntax fix | `Tab` (only while it is visible) |
 
-`Ctrl+K Ctrl+I` rather than a bare `Ctrl+K`: `Ctrl+K` is the prefix for VS Code's
-whole chord family, and taking it would remove all of them.
+### Ctrl+K without breaking the chords
+
+`Ctrl+K` is the prefix for VS Code's whole chord family, so binding it looks
+like a collision. It is not, and the reason is in `KeybindingResolver.resolve()`:
+on a single `Ctrl+K` press the resolver collects **every** binding whose first
+chord is `ctrl+k` and returns the last one whose `when` clause matches. A
+one-chord result runs immediately; a two-chord result enters chord mode.
+
+So the `when: editorHasSelection` clause is what makes them coexist:
+
+| | Result |
+| --- | --- |
+| `Ctrl+K` **with** a selection | Inline edit opens |
+| `Ctrl+K` **without** a selection | Chord prefix, unchanged (`Ctrl+K Ctrl+S`, `Ctrl+K Z`, …) |
+
+The price, stated plainly: while text is selected the `Ctrl+K` chords are not
+reachable. That is the same trade-off Cursor makes. `Ctrl+K Ctrl+I` stays bound
+as a second route, so inline edit also works with no selection — it takes the
+line the cursor is on.
 
 ## The chat
 

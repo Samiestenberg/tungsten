@@ -71,7 +71,7 @@ export const GUIDE_SYSTEM = [
 	"- Next-edit prediction, which suggests where the next change goes. Setting: freya.nextEdit.enabled",
 	"- Ghost-text syntax fix while typing, accepted with Tab. Setting: freya.syntaxFix.enabled",
 	"- Tentative completions in catch blocks, regex literals and test files. Setting: freya.tentative.enabled",
-	"- Rewrite the selection with an instruction: Ctrl+K Ctrl+I (Freya: Rewrite selection with an instruction)",
+	"- Rewrite the selection with an instruction: select code and press Ctrl+K (Freya: Rewrite selection with an instruction). Ctrl+K Ctrl+I does the same without a selection.",
 	"- Refactor presets: Ctrl+K Ctrl+R (Freya: Refactor selection...)",
 	"- Fix a semantic error: click the lightbulb on the error and choose the Freya fix",
 	"- Explain code: Freya: Explain selected code",

@@ -138,6 +138,12 @@
     "keybindings": [
       {
         "command": "freya.inlineEdit",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "when": "editorTextFocus && editorHasSelection && !editorReadonly"
+      },
+      {
+        "command": "freya.inlineEdit",
         "key": "ctrl+k ctrl+i",
         "mac": "cmd+k cmd+i",
         "when": "editorTextFocus && !editorReadonly"
