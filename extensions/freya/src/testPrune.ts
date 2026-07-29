@@ -191,16 +191,47 @@ export function pruneGeneratedTests(code: string): string {
 	if (cutAt < 0) {
 		// Avhugget men inte upprepat: klipp vid sista testfallets början, så att
 		// vi inte lämnar ett halvskrivet test kvar.
+		//
+		// ─────────────────────────────────────────────────────────────────
+		// MEN FÖRST: ÄR DET SISTA TESTET ENS TRASIGT?
+		//
+		// openStack() mäter hela filen, och en genererad testfil är nästan
+		// alltid inbäddad i ett describe(...). Tar tokentaket slut EFTER ett
+		// avslutat it(...) men FÖRE describe-blockets `});` är hela filen
+		// obalanserad trots att varje testfall i den är helt:
+		//
+		//   describe("clampToLines", () => {
+		//     it("a", () => { ... });
+		//     it("b", () => { ... });      <- komplett
+		//   <- här tog tokentaket slut
+		//
+		// Den gamla koden klippte då vid `it("b"`, alltså ETT FULLT GILTIGT
+		// TEST, och balanserade resten. Ett svar med två användbara fall gav
+		// användaren ett. Det är precis den sortens tyst förlust den här filen
+		// finns för att undvika.
+		//
+		// Så: klipp bara om svansen FRÅN sista testets början faktiskt är
+		// obalanserad i sig. Är den hel behöver filen bara stängas, och det
+		// gör balance() nedan.
+		// ─────────────────────────────────────────────────────────────────
+		let lastStart = -1;
 		for (let i = lines.length - 1; i >= 0; i--) {
 			if (TEST_START.test(lines[i])) {
-				cutAt = i;
+				lastStart = i;
 				break;
 			}
 		}
-		if (cutAt < 0) {
+		if (lastStart < 0) {
 			// Inga testfall alls att klippa vid. Balansera det som finns.
 			return balance(code);
 		}
+		const tail = lines.slice(lastStart).join("\n");
+		if (openStack(tail).length === 0) {
+			// Sista testet är komplett -- bara omslutande block som saknar sin
+			// stängning. Behåll allt.
+			return balance(code);
+		}
+		cutAt = lastStart;
 	}
 
 	const kept = lines.slice(0, cutAt).join("\n").replace(/\s+$/, "");

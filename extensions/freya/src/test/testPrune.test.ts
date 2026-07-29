@@ -167,6 +167,37 @@ suite('Testgenerering: klipp upprepningar och balansera', () => {
 		assert.deepStrictEqual(openStack(pruned), []);
 	});
 
+	test('KRITISKT: ett KOMPLETT sista test far inte atas nar bara describe ar oppet', () => {
+		// REGRESSIONEN. openStack() mater HELA filen, och en genererad testfil
+		// ligger nastan alltid i ett describe(...). Tar tokentaket slut EFTER ett
+		// avslutat it(...) men FORE describe-blockets `});` ar filen obalanserad
+		// trots att varje testfall i den ar helt.
+		//
+		// Den gamla koden klippte da vid SISTA testets borjan -- alltsa ett fullt
+		// giltigt test -- och balanserade resten. Tva anvandbara fall blev ett.
+		// Det ar samma sorts tysta forlust som REPEAT_RUN_TO_CUT finns for att
+		// undvika, fast fran andra hallet.
+		const cut = [
+			'describe("clampToLines", () => {',
+			'  it("returns the text when it fits", () => {',
+			'    expect(clamp("abc", 10)).toBe("abc");',
+			'  });',
+			'',
+			'  it("cuts at the last newline", () => {',
+			'    expect(clamp("a\\nb", 2)).toBe("a");',
+			'  });',
+			// describe stangs aldrig -- har tog tokentaket slut.
+		].join('\n');
+
+		const pruned = pruneGeneratedTests(cut);
+		assert.ok(pruned.includes('returns the text when it fits'), 'forsta testet forsvann');
+		assert.ok(
+			pruned.includes('cuts at the last newline'),
+			'det KOMPLETTA sista testet ats upp av avhuggnings-klippet'
+		);
+		assert.deepStrictEqual(openStack(pruned), [], 'filen stangdes inte');
+	});
+
 	test('avhugget utan nagot testfall alls balanseras', () => {
 		const pruned = pruneGeneratedTests('describe("x", () => {\n  const fixture = {');
 		assert.deepStrictEqual(openStack(pruned), []);
