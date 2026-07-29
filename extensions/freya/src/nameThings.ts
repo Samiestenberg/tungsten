@@ -16,6 +16,7 @@ import * as vscode from "vscode";
 import {
   ensureInstructReady,
   clampToLines,
+  instructFailureMessage,
   instructOneShot,
   instructUnavailableMessage,
   isIdentifier,
@@ -130,6 +131,10 @@ export function registerNameThings(ctx: vscode.ExtensionContext): void {
         at + CONTEXT_CHARS / 2
       );
 
+      // Felet fran modellanropet, sparat i stallet for bortkastat. Utan det
+      // rapporterades en nere server som "modellen hade inget att saga".
+      // Se instructFailureMessage() i instructModel.ts.
+      let failure: unknown;
       const raw = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Window,
@@ -151,7 +156,8 @@ export function registerNameThings(ctx: vscode.ExtensionContext): void {
               maxTokens: 120,
               signal: ac.signal,
             });
-          } catch {
+          } catch (err) {
+            failure = err;
             return undefined;
           } finally {
             sub.dispose();
@@ -166,7 +172,8 @@ export function registerNameThings(ctx: vscode.ExtensionContext): void {
 
       if (names.length === 0) {
         vscode.window.showInformationMessage(
-          "Freya: no name suggestions this time."
+          instructFailureMessage(failure) ??
+            "Freya: no name suggestions this time."
         );
         return;
       }

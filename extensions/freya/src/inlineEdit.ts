@@ -55,6 +55,7 @@ import {
   ensureInstructReady,
   clampToLines,
   instructCode,
+  instructFailureMessage,
   instructUnavailableMessage,
   reindent,
 } from "./instructModel.js";
@@ -139,6 +140,10 @@ export async function runInlineEdit(preset?: string): Promise<void> {
     return;
   }
 
+  // Felet fran modellanropet, sparat i stallet for bortkastat. Utan det
+  // rapporterades en nere server som "modellen hade inget att saga".
+  // Se instructFailureMessage() i instructModel.ts.
+  let failure: unknown;
   const proposal = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -157,7 +162,8 @@ export async function runInlineEdit(preset?: string): Promise<void> {
           maxTokens: Math.min(1200, Math.ceil(fragment.length / 3) + 256),
           signal: ac.signal,
         });
-      } catch {
+      } catch (err) {
+        failure = err;
         return undefined;
       } finally {
         sub.dispose();
@@ -167,7 +173,8 @@ export async function runInlineEdit(preset?: string): Promise<void> {
 
   if (!proposal?.trim()) {
     vscode.window.showWarningMessage(
-      "Freya: the model returned nothing. Try a shorter selection or a more specific instruction."
+      instructFailureMessage(failure) ??
+        "Freya: the model returned nothing. Try a shorter selection or a more specific instruction."
     );
     return;
   }

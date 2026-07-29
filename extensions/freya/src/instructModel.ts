@@ -316,6 +316,41 @@ export function instructUnavailableMessage(): string {
   return INSTRUCT_MISSING;
 }
 
+/**
+ * Beskedet när ett instruct-ANROP gick fel. undefined = säg ingenting.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR DEN BEHÖVS. Fem ytor hade exakt samma mönster:
+ *
+ *   try { return await instructCode({...}); } catch { return undefined; }
+ *   ...
+ *   if (!proposal?.trim()) { "the model returned nothing. Try a shorter
+ *                            selection or a more specific instruction." }
+ *
+ * Felet kastades alltså bort, och ALLT -- servern nere, en 500 från llama.cpp,
+ * en trasig modellfil -- rapporterades som "modellen hade inget att säga,
+ * försök formulera om dig". Användaren skickades att felsöka sin egen
+ * markering medan problemet låg någon annanstans.
+ *
+ * Nu sparas felet och skickas hit. Den tomma svarsraden står kvar för det fall
+ * den faktiskt beskriver: modellen svarade, men svarade tomt.
+ *
+ * En AVBRYTNING ger undefined. Användaren tryckte själv på avbryt och behöver
+ * inte få veta att det blev som hen bad om.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+export function instructFailureMessage(err: unknown): string | undefined {
+  if (err === undefined || err === null) {
+    return undefined;
+  }
+  if ((err as any)?.name === "AbortError") {
+    return undefined;
+  }
+  return `Freya: the local model call failed. ${String(
+    (err as any)?.message ?? err
+  )}`;
+}
+
 /** Beskedet när 3B:n saknas. Ett ställe, samma ordval överallt. */
 export const INSTRUCT_MISSING =
   "Tungsten's 3B instruct model is not installed in this build. " +

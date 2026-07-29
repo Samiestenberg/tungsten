@@ -28,6 +28,7 @@ import {
   ensureInstructReady,
   instructAvailable,
   instructCode,
+  instructFailureMessage,
   instructUnavailableMessage,
 } from "./instructModel.js";
 import { isSyntaxDiagnostic } from "./fim/syntaxSignal.js";
@@ -291,6 +292,10 @@ export function registerSemanticFix(ctx: vscode.ExtensionContext): void {
 
         const before = document.getText();
 
+        // Felet fran modellanropet, sparat i stallet for bortkastat. Utan det
+        // rapporterades en nere server som "modellen hade inget att saga".
+        // Se instructFailureMessage() i instructModel.ts.
+        let failure: unknown;
         const fixed = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
@@ -307,7 +312,8 @@ export function registerSemanticFix(ctx: vscode.ExtensionContext): void {
                 maxTokens: Math.min(2400, Math.ceil(before.length / 3) + 256),
                 signal: ac.signal,
               });
-            } catch {
+            } catch (err) {
+              failure = err;
               return undefined;
             } finally {
               sub.dispose();
@@ -317,7 +323,8 @@ export function registerSemanticFix(ctx: vscode.ExtensionContext): void {
 
         if (!fixed?.trim()) {
           vscode.window.showWarningMessage(
-            "Freya: the model had no fix to offer for that error."
+            instructFailureMessage(failure) ??
+              "Freya: the model had no fix to offer for that error."
           );
           return;
         }

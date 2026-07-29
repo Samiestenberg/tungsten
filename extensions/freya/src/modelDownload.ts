@@ -29,6 +29,7 @@ import * as vscode from "vscode";
 import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { pipeline } from "stream/promises";
 import { getDownloadRoot } from "./runtimeLayout.js";
 
 /**
@@ -160,6 +161,38 @@ function destinationFor(model: DownloadableModel): string | undefined {
   return root ? path.join(root, model.subdir, model.file) : undefined;
 }
 
+/**
+ * Hur gammal en övergiven temp-fil måste vara innan vi städar bort den.
+ * Rejält tilltaget: en PÅGÅENDE hämtning i ett annat fönster får aldrig
+ * råka räknas som skräp. 2,1 GB tar minuter, inte timmar.
+ */
+const STALE_PART_MS = 12 * 3600_000;
+
+/**
+ * Städar bort temp-filer som en kraschad körning lämnat efter sig.
+ *
+ * Med en egen temp-fil per hämtning (se downloadModel) skrivs de inte längre
+ * över av nästa försök, så en process som dör mitt i skulle annars lämna en
+ * halv GGUF liggande för alltid. Filerna är ofarliga -- findModel() letar bara
+ * efter .gguf -- men de tar gigabyte.
+ */
+function sweepStaleParts(dir: string, modelFile: string): void {
+  try {
+    const cutoff = Date.now() - STALE_PART_MS;
+    for (const name of fs.readdirSync(dir)) {
+      if (!name.startsWith(`${modelFile}.`) || !name.endsWith(".part")) {
+        continue;
+      }
+      const full = path.join(dir, name);
+      if (fs.statSync(full).mtimeMs < cutoff) {
+        fs.rmSync(full, { force: true });
+      }
+    }
+  } catch {
+    // Städning är aldrig värd att fälla en hämtning på.
+  }
+}
+
 /** Läser filen i bitar. En 2 GB-fil ska inte in i heapen. */
 function sha256Streaming(file: string): string {
   const hash = crypto.createHash("sha256");
@@ -207,8 +240,31 @@ async function downloadModel(
   }
 
   const url = downloadUrlFor(model);
-  const part = `${dest}.part`;
   fs.mkdirSync(path.dirname(dest), { recursive: true });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EGEN TEMP-FIL PER HÄMTNING, inte en delad `<dest>.part`.
+  //
+  // VARFÖR -- uppmätt med två samtidiga first-run-hämtningar till samma mål,
+  // alltså två fönster som båda utlöser en instruct-funktion första gången:
+  //
+  //   fönster A -> false, "ENOENT: no such file or directory, open ...part"
+  //   fönster B -> true
+  //   resultat: filen blev korrekt (2 132 498 112 B)
+  //
+  // Slutfilen blev alltså rätt, men BARA för att båda laddade ner exakt samma
+  // bytes till samma filhandtag. Vägen dit var full av fällor: B döpte om
+  // .part-filen medan A fortfarande höll på, så A hashade en fil som inte fanns
+  // längre. Åt andra hållet hade A:s städning (`rmSync(part)`) kunnat radera
+  // filen B just höll på att skriva.
+  //
+  // Med ett eget namn per hämtning är fönstren oberoende: var och en laddar
+  // ner, verifierar sin EGEN fil och döper om den till samma mål. Sist vinner,
+  // och båda kandidaterna är verifierade. Priset är dubbel bandbredd i det
+  // ovanliga fallet -- samma som förut -- men felvägen försvinner.
+  // ─────────────────────────────────────────────────────────────────────────
+  const part = `${dest}.${process.pid}-${Date.now().toString(36)}.part`;
+  sweepStaleParts(path.dirname(dest), model.file);
 
   const ac = new AbortController();
   const sub = token.onCancellationRequested(() => ac.abort());
@@ -219,28 +275,51 @@ async function downloadModel(
       throw new Error(`${res.status} ${res.statusText} for ${url}`);
     }
 
-    const out = fs.createWriteStream(part);
     let written = 0;
     let lastPercent = 0;
 
-    try {
-      for await (const chunk of res.body) {
-        written += chunk.length;
-        if (!out.write(chunk)) {
-          await new Promise<void>((r) => out.once("drain", () => r()));
+    // ─────────────────────────────────────────────────────────────────────
+    // pipeline() OCH INTE EN EGEN write/drain-LOOP. Skälet är uppmätt.
+    //
+    // Den handskrivna loopen såg ut så här:
+    //
+    //   const out = fs.createWriteStream(part);
+    //   for await (const chunk of res.body) {
+    //     if (!out.write(chunk)) await new Promise(r => out.once("drain", r));
+    //   }
+    //
+    // Ingen felhanterare på strömmen. Ett skrivfel -- och det realistiska
+    // felet här är att disken tar slut mitt i 2,1 GB -- gav då:
+    //
+    //   Error: EISDIR/ENOSPC ...
+    //   Emitted 'error' event on WriteStream instance at: ...
+    //
+    // alltså ett OHANTERAT strömfel som inte gick genom vårt try/catch alls.
+    // Värre: hade felet kommit medan vi väntade på "drain" hade väntan aldrig
+    // lösts upp, och out.end() i finally hade inte heller anropat sin callback.
+    // Nedladdningen hade HÄNGT med en progressruta som aldrig blev klar.
+    //
+    // pipeline() propagerar fel från båda hållen, river strömmarna, och
+    // returnerar ett promise som faktiskt avvisas. Backpressure sköts åt oss,
+    // så generatorn nedan bara räknar och rapporterar.
+    // ─────────────────────────────────────────────────────────────────────
+    await pipeline(
+      async function* () {
+        for await (const chunk of res.body as any as AsyncIterable<Uint8Array>) {
+          written += chunk.length;
+          const percent = Math.floor((written / model.bytes) * 100);
+          if (percent > lastPercent) {
+            progress.report({
+              increment: percent - lastPercent,
+              message: `${(written / 1048576).toFixed(0)} MB of ${(model.bytes / 1048576).toFixed(0)} MB`,
+            });
+            lastPercent = percent;
+          }
+          yield chunk;
         }
-        const percent = Math.floor((written / model.bytes) * 100);
-        if (percent > lastPercent) {
-          progress.report({
-            increment: percent - lastPercent,
-            message: `${(written / 1048576).toFixed(0)} MB of ${(model.bytes / 1048576).toFixed(0)} MB`,
-          });
-          lastPercent = percent;
-        }
-      }
-    } finally {
-      await new Promise<void>((resolve) => out.end(() => resolve()));
-    }
+      },
+      fs.createWriteStream(part)
+    );
 
     if (written !== model.bytes) {
       throw new Error(
@@ -261,7 +340,20 @@ async function downloadModel(
 
     fs.renameSync(part, dest);
   } catch (err) {
-    fs.rmSync(part, { force: true });
+    // STÄDNINGEN FÅR ALDRIG SKUGGA ORSAKEN. Kastar rmSync här -- .part är
+    // låst av en annan process, ligger på en full disk, är en katalog -- så
+    // ersätts det RIKTIGA felet av städfelet, och användaren får veta att en
+    // borttagning misslyckades i stället för att disken är full.
+    //
+    // Uppmätt: med en katalog i vägen blev beskedet "Path is a directory: rm
+    // returned EISDIR", vilket säger ingenting om vad som faktiskt gick fel.
+    try {
+      fs.rmSync(part, { force: true, recursive: true });
+    } catch {
+      // Halvfilen ligger kvar. Den heter .part och kan aldrig förväxlas med en
+      // färdig modell -- findModel() letar bara efter .gguf -- och nästa försök
+      // skriver över den. Originalfelet är viktigare.
+    }
     throw err;
   } finally {
     sub.dispose();

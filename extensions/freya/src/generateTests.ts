@@ -21,6 +21,7 @@ import {
   ensureInstructReady,
   clampToLines,
   instructCode,
+  instructFailureMessage,
   instructUnavailableMessage,
 } from "./instructModel.js";
 import {
@@ -178,6 +179,10 @@ export function registerGenerateTests(ctx: vscode.ExtensionContext): void {
       const sourcePath = vscode.workspace.asRelativePath(editor.document.uri);
       const testPath = testPathFor(sourcePath, framework);
 
+      // Felet fran modellanropet, sparat i stallet for bortkastat. Utan det
+      // rapporterades en nere server som "modellen hade inget att saga".
+      // Se instructFailureMessage() i instructModel.ts.
+      let failure: unknown;
       const tests = await vscode.window.withProgress(
         {
           location: vscode.ProgressLocation.Notification,
@@ -205,7 +210,8 @@ export function registerGenerateTests(ctx: vscode.ExtensionContext): void {
               maxTokens: 700,
               signal: ac.signal,
             });
-          } catch {
+          } catch (err) {
+            failure = err;
             return undefined;
           } finally {
             sub.dispose();
@@ -215,7 +221,8 @@ export function registerGenerateTests(ctx: vscode.ExtensionContext): void {
 
       if (!tests?.trim()) {
         vscode.window.showWarningMessage(
-          "Freya: the model returned no tests. Try selecting a single function."
+          instructFailureMessage(failure) ??
+            "Freya: the model returned no tests. Try selecting a single function."
         );
         return;
       }

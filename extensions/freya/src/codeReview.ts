@@ -32,6 +32,7 @@ import * as vscode from "vscode";
 import {
   ensureInstructReady,
   clampToLines,
+  instructFailureMessage,
   instructOneShot,
   instructUnavailableMessage,
 } from "./instructModel.js";
@@ -117,6 +118,10 @@ export function registerCodeReview(ctx: vscode.ExtensionContext): void {
 				return;
 			}
 
+			// Felet fran modellanropet, sparat i stallet for bortkastat. Utan det
+			// rapporterades en nere server som "modellen hade inget att saga".
+			// Se instructFailureMessage() i instructModel.ts.
+			let failure: unknown;
 			const answer = await vscode.window.withProgress(
 				{
 					location: vscode.ProgressLocation.Notification,
@@ -139,7 +144,8 @@ export function registerCodeReview(ctx: vscode.ExtensionContext): void {
 							maxTokens: 400,
 							signal: ac.signal,
 						});
-					} catch {
+					} catch (err) {
+						failure = err;
 						return undefined;
 					} finally {
 						sub.dispose();
@@ -148,7 +154,9 @@ export function registerCodeReview(ctx: vscode.ExtensionContext): void {
 			);
 
 			if (!answer?.trim()) {
-				vscode.window.showWarningMessage("Freya: no answer this time.");
+				vscode.window.showWarningMessage(
+					instructFailureMessage(failure) ?? "Freya: no answer this time."
+				);
 				return;
 			}
 
