@@ -22,6 +22,7 @@ import {
   endInstructCall,
   instructEndpoint,
   instructInstalled,
+  invalidateInstructEndpoint,
 } from "./instructServer.js";
 import { stripCodeFences } from "./instructText.js";
 
@@ -107,8 +108,42 @@ export async function ensureInstructReady(): Promise<boolean> {
 export async function instructOneShot(
   opts: InstructOptions
 ): Promise<string | undefined> {
+  const first = await attemptOneShot(opts);
+  if (first.ok) {
+    return first.value;
+  }
+
+  // INGEN KONTAKT med servern. Det betyder nästan alltid att den endpoint vi
+  // hade cachad pekar på en process som inte finns längre -- typiskt för att
+  // ETT ANNAT FÖNSTER ägde llama-servern och rev den vid idle-unload medan vi
+  // fortfarande hade adressen kvar. Se invalidateEndpoint() i instructServer.ts.
+  //
+  // Släpp cachen och försök EN gång till. Andra försöket får en riktigt
+  // probead endpoint: kör någon annan servern adopteras den, annars startas en
+  // ny. Går även det andra försöket i väggen är felet äkta och kastas vidare.
+  //
+  // Bara ETT omförsök, och bara på kontaktfel. Ett HTTP-fel betyder att servern
+  // lever och sa nej, och det ska inte döljas av en retry.
+  invalidateInstructEndpoint();
+  const second = await attemptOneShot(opts);
+  if (second.ok) {
+    return second.value;
+  }
+  throw second.error;
+}
+
+/** Utfallet av ETT försök. `ok: false` = fick aldrig kontakt med servern. */
+type Attempt =
+  | { ok: true; value: string | undefined }
+  | { ok: false; error: unknown };
+
+/**
+ * Ett anrop. Kastar vidare allt UTOM kontaktfel; de returneras som
+ * `{ ok: false }` så att anroparen kan välja att försöka om.
+ */
+async function attemptOneShot(opts: InstructOptions): Promise<Attempt> {
   const ep = await instructEndpoint();
-  if (!ep) return undefined;
+  if (!ep) return { ok: true, value: undefined };
 
   beginInstructCall();
   try {
@@ -128,33 +163,73 @@ export async function instructOneShot(
       // att återinföra hela felklassen lanen finns för att undvika.
     };
 
-    const res = await fetch(`${ep.baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      signal: opts.signal,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${ep.apiKey}`,
-      },
-      body: JSON.stringify(body),
-    });
+    // Har vi redan matat ut text till anroparen? I så fall får anropet ALDRIG
+    // göras om: strömmen har redan landat i chatten, och ett andra försök hade
+    // skrivit svaret en gång till efter det halva. Ett halvt svar är bättre än
+    // ett dubblerat.
+    let emitted = false;
+    const onDelta = opts.onDelta
+      ? (chunk: string) => {
+          emitted = true;
+          opts.onDelta!(chunk);
+        }
+      : undefined;
+
+    let res: Response;
+    try {
+      res = await fetch(`${ep.baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        signal: opts.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${ep.apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      // fetch kastar bara vid TRANSPORTFEL (ECONNREFUSED, ECONNRESET, DNS).
+      // Ett HTTP-svar -- även 500 -- kommer tillbaka som ett res-objekt.
+      // Undantaget är användarens egen avbrytning, som inte är ett serverfel.
+      if (isAbort(err, opts.signal)) {
+        throw err;
+      }
+      return { ok: false, error: err };
+    }
 
     if (!res.ok) {
+      // Servern LEVER och sa nej. Inget att försöka om.
       throw new Error(
         `instruct /v1/chat/completions ${res.status}: ${await res.text()}`
       );
     }
 
-    if (opts.onDelta) {
-      return await readSSE(res, opts.onDelta);
+    if (onDelta) {
+      try {
+        return { ok: true, value: await readSSE(res, onDelta) };
+      } catch (err) {
+        if (emitted || isAbort(err, opts.signal)) {
+          throw err;
+        }
+        // Strömmen dog innan ett enda tecken kom ut. Ingen text att dubblera.
+        return { ok: false, error: err };
+      }
     }
 
     const data: any = await res.json();
     // Bara .content. Ett eventuellt tool_calls-fält läses inte ens -- det
     // finns inget vi skulle göra med det.
-    return String(data?.choices?.[0]?.message?.content ?? "");
+    return {
+      ok: true,
+      value: String(data?.choices?.[0]?.message?.content ?? ""),
+    };
   } finally {
     endInstructCall();
   }
+}
+
+/** Användarens avbrytning, inte ett serverfel. Får aldrig utlösa ett omförsök. */
+function isAbort(err: unknown, signal?: AbortSignal): boolean {
+  return signal?.aborted === true || (err as any)?.name === "AbortError";
 }
 
 /**

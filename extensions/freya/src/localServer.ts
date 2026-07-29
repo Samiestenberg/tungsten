@@ -93,6 +93,33 @@ class LocalModelServer {
     return this.failed;
   }
 
+  /**
+   * Släpper den CACHADE endpointen utan att röra processen.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * SAMMA RACE SOM I INSTRUCT-LANEN, men med en värre svans här.
+   *
+   * probeReady()-grenen i start() gör att ett andra fönster återanvänder en
+   * llama-server som redan kör. Fönster B får då en endpoint till en process
+   * det inte äger -- this.proc är undefined hos B, så B får inget "exit"-event.
+   *
+   * När fönster A stängs kör dess dispose() -> stop() -> taskkill. B sitter kvar
+   * med en cachad endpoint som pekar på ingenting, och ensure() returnerar den
+   * rakt av utan att proba om.
+   *
+   * VARFÖR DET ÄR VÄRRE HÄR: instruct-lanen har en idle-timer som förr eller
+   * senare nollar endpointen. FIM-lanen har ingen -- den är avsiktligt alltid
+   * uppe. Utan den här ventilen är B:s autocomplete alltså trasig för RESTEN AV
+   * SESSIONEN, och symptomet är bara att förslagen tystnar.
+   *
+   * Processen rörs inte: äger vi den är den vår att stoppa via stop(), och äger
+   * vi den inte finns det inget att stoppa.
+   * ─────────────────────────────────────────────────────────────────────
+   */
+  invalidateEndpoint(): void {
+    this.endpoint = undefined;
+  }
+
   /** Startar vid behov. Samtidiga anrop delar samma start. */
   async ensure(): Promise<LocalEndpoint | undefined> {
     if (this.endpoint) return this.endpoint;
@@ -221,6 +248,15 @@ export function initLocalServer(
 /** Endpointen till den inbäddade modellen, eller undefined om den inte finns. */
 export async function localEndpoint(): Promise<LocalEndpoint | undefined> {
   return server ? server.ensure() : undefined;
+}
+
+/**
+ * Släpper den cachade endpointen. Anropas av localModel.ts när ett anrop inte
+ * fick KONTAKT -- till skillnad från ett HTTP-fel, som betyder att servern
+ * lever och svarade. Se invalidateEndpoint() ovan för racet den löser.
+ */
+export function invalidateLocalEndpoint(): void {
+  server?.invalidateEndpoint();
 }
 
 /** Nuvarande läge utan att starta något. För statusraden. */

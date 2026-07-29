@@ -172,6 +172,38 @@ class InstructModelServer {
     }
   }
 
+  /**
+   * Släpper den CACHADE endpointen utan att röra processen.
+   *
+   * ─────────────────────────────────────────────────────────────────────
+   * VARFÖR DEN BEHÖVS -- ett race mellan två fönster, inte en teori.
+   *
+   * probeReady()-grenen i start() gör att ett andra fönster ÅTERANVÄNDER en
+   * llama-server som redan kör i stället för att ladda 2 GB en gång till.
+   * Fönster B får då en endpoint till en process det inte äger: this.proc är
+   * undefined hos B, så B får inget "exit"-event när processen dör.
+   *
+   *
+   * Fönster A äger processen och river den vid idle-unload. Efter det har B
+   * kvar en cachad endpoint som pekar på ingenting, och ensure() returnerar
+   * den rakt av (`if (this.endpoint) return this.endpoint`) utan att proba om.
+   * Varje instruct-anrop i B ger ECONNREFUSED tills B:s EGEN idle-timer råkar
+   * lösa ut -- eller för alltid, om användaren satt idleUnloadMs till 0.
+   *
+   * Fixen är att anroparen släpper cachen när kontakten faktiskt uteblev och
+   * frågar en gång till. Nästa ensure() probar om: kör någon annan servern
+   * adopteras den, annars startas en ny.
+   *
+   * Processen rörs INTE här. Äger vi den är den vår att stoppa via stop(); äger
+   * vi den inte finns det inget att stoppa. Det ägda fallet läker redan av sig
+   * självt -- "exit"-handlern nollar både proc och endpoint.
+   * ─────────────────────────────────────────────────────────────────────
+   */
+  invalidateEndpoint(): void {
+    this.endpoint = undefined;
+    this.clearIdleTimer();
+  }
+
   /** Startar vid behov. Samtidiga anrop delar samma start. */
   async ensure(): Promise<InstructEndpoint | undefined> {
     if (this.endpoint) return this.endpoint;
@@ -314,6 +346,15 @@ export function beginInstructCall(): void {
 
 export function endInstructCall(): void {
   server?.endCall();
+}
+
+/**
+ * Släpper den cachade endpointen. Anropas av instructModel.ts när ett anrop
+ * inte fick KONTAKT (till skillnad från ett HTTP-fel, som betyder att servern
+ * lever och svarade). Se invalidateEndpoint() ovan för racet den löser.
+ */
+export function invalidateInstructEndpoint(): void {
+  server?.invalidateEndpoint();
 }
 
 /** Nuvarande läge UTAN att starta något. För statusraden och hälsokollen. */
