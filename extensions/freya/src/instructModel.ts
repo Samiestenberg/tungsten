@@ -20,9 +20,11 @@
 import {
   beginInstructCall,
   endInstructCall,
+  instructBundledInBuild,
   instructConflictingPort,
   instructEndpoint,
   instructInstalled,
+  instructTurnedOff,
   invalidateInstructEndpoint,
 } from "./instructServer.js";
 import { stripCodeFences } from "./instructText.js";
@@ -302,6 +304,25 @@ export async function instructCode(
  *
  * Fallet är inte hypotetiskt -- se portListening() i runtimeLayout.ts, där det
  * är uppmätt vad som faktiskt händer på Windows när porten är tagen.
+ *
+ * SEDAN DESS HAR TVÅ FALL TILL VISAT SIG, båda uppmätta 2026-07-30 mot en
+ * riktig D2-installation:
+ *
+ *   1. Nedladdningen misslyckades (eller avböjdes). Uppmätt genom att peka
+ *      freya.runtime.baseUrl på en server som returnerar rätt ANTAL byte men
+ *      fel innehåll: sha256-grinden stoppar filen, och chatten svarade då
+ *      "not installed in this build. It ships with the packaged app". Båda
+ *      leden är fel i D2 -- modellen ska INTE ligga i bygget, den hämtas -- och
+ *      fetchLocalRuntime.ts är ett byggskript som inte ens finns i en
+ *      installation. Användaren skickas att leta efter fel sak.
+ *
+ *   2. Användaren har själv stängt av freya.instruct.enabled. Då är ingenting
+ *      trasigt och ingenting saknas, men beskedet påstod att bygget var
+ *      ofullständigt.
+ *
+ * Samma mönster som de fem ytorna i instructFailureMessage(): felet var inte
+ * att vi saknade information, utan att vi rapporterade en orsak vi inte hade
+ * kontrollerat.
  * ─────────────────────────────────────────────────────────────────────────
  */
 export function instructUnavailableMessage(): string {
@@ -312,6 +333,16 @@ export function instructUnavailableMessage(): string {
       `instruct model could not start. Close whatever is using it, or set ` +
       `freya.instruct.port to a free port.`
     );
+  }
+  if (instructTurnedOff()) {
+    return (
+      "Tungsten's 3B instruct model is turned off, so Explain, Inline edit, " +
+      "Fix, Generate tests, the refactor actions and this chat are " +
+      "unavailable. Turn freya.instruct.enabled back on to use them."
+    );
+  }
+  if (!instructBundledInBuild()) {
+    return INSTRUCT_NOT_DOWNLOADED;
   }
   return INSTRUCT_MISSING;
 }
@@ -351,8 +382,24 @@ export function instructFailureMessage(err: unknown): string | undefined {
   )}`;
 }
 
-/** Beskedet när 3B:n saknas. Ett ställe, samma ordval överallt. */
+/**
+ * Beskedet när 3B:n saknas i ett bygge som SKULLE ha haft den med sig.
+ * Alltså ett dev-träd, eller en trasig D1-installation.
+ */
 export const INSTRUCT_MISSING =
   "Tungsten's 3B instruct model is not installed in this build. " +
   "It ships with the packaged app; in a dev tree, run " +
   "`node --experimental-strip-types build/freya/fetchLocalRuntime.ts`.";
+
+/**
+ * Beskedet när modellen inte är HÄMTAD ännu -- det normala läget i D2-bygget,
+ * där installern medvetet inte har någon 3B med sig.
+ *
+ * Säger vad som faktiskt hänt och vad man gör åt det. Ingen `fetchLocalRuntime`
+ * här: det är ett byggskript, och det finns inte i en installation.
+ */
+export const INSTRUCT_NOT_DOWNLOADED =
+  "Tungsten's 3B instruct model has not been downloaded yet, so this feature " +
+  "is unavailable. Run \"Freya: Download the instruct model\" from the " +
+  "Command Palette, or use any instruct feature again to get the prompt. " +
+  "It is a one-time 2.1 GB download and everything runs locally afterwards.";

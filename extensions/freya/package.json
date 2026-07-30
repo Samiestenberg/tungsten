@@ -294,8 +294,8 @@
         },
         "freya.instruct.contextSize": {
           "type": "number",
-          "default": 8192,
-          "description": "Context window for the instruct model. Larger than the FIM model's because an instruct prompt carries a file plus a diff."
+          "default": 2048,
+          "markdownDescription": "Context window for the instruct model, in tokens. 2048 is what the model that ships here was trained on, and llama.cpp caps the window at a model's training context no matter what you ask for — so raising this on its own changes nothing. Raise it only together with a model that was trained on more (`freya.instruct.runtimePath`). The chat's input and output limits are derived from this number and follow it automatically."
         },
         "freya.instruct.runtimePath": {
           "type": "string",

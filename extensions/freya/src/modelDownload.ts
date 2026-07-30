@@ -185,12 +185,46 @@ function destinationFor(model: DownloadableModel): string | undefined {
 const STALE_PART_MS = 12 * 3600_000;
 
 /**
+ * Lever processen som skrev en temp-fil fortfarande?
+ *
+ * `process.kill(pid, 0)` skickar ingen signal -- den frågar bara om pid:en går
+ * att nå. ESRCH = processen finns inte. EPERM = den finns men tillhör någon
+ * annan användare, vilket också är ett "ja, den lever".
+ */
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: any) {
+    return err?.code === "EPERM";
+  }
+}
+
+/**
  * Städar bort temp-filer som en kraschad körning lämnat efter sig.
  *
- * Med en egen temp-fil per hämtning (se downloadModel) skrivs de inte längre
- * över av nästa försök, så en process som dör mitt i skulle annars lämna en
- * halv GGUF liggande för alltid. Filerna är ofarliga -- findModel() letar bara
- * efter .gguf -- men de tar gigabyte.
+ * ─────────────────────────────────────────────────────────────────────────
+ * VARFÖR PID:EN I FILNAMNET ANVÄNDS, och inte bara åldern.
+ *
+ * Temp-filen heter `<dest>.<pid>-<tid>.part` (se downloadModel). PID:en låg
+ * där för att två fönster inte skulle skriva i samma fil -- men den svarar
+ * också på den enda fråga städningen egentligen har: är det HÄR någon som
+ * fortfarande håller på, eller är det skräp?
+ *
+ * Utan den frågan gick städningen bara på ålder, och tröskeln måste då vara
+ * rejält tilltagen för att aldrig råka radera en pågående hämtning i ett annat
+ * fönster. Följden var uppmätt 2026-07-30: appen dödades hårt mitt i en
+ * hämtning, och 1 494 941 696 byte blev liggande. De städas inte förrän NÄSTA
+ * hämtning startar OCH filen hunnit bli 12 timmar gammal -- alltså i praktiken
+ * aldrig, för den som redan har modellen laddar aldrig ner igen.
+ *
+ * Med pid-kontrollen är samma fil skräp i samma sekund som processen dog, och
+ * en LEVANDE hämtning i ett annat fönster är skyddad av något starkare än en
+ * tidsgräns: dess process finns.
+ *
+ * Åldersregeln står kvar som andra utväg, för namn vi inte kan tolka och för
+ * det fall en död pid hunnit återanvändas av en annan process.
+ * ─────────────────────────────────────────────────────────────────────────
  */
 function sweepStaleParts(dir: string, modelFile: string): void {
   try {
@@ -200,6 +234,15 @@ function sweepStaleParts(dir: string, modelFile: string): void {
         continue;
       }
       const full = path.join(dir, name);
+      const pid = Number(
+        name.slice(modelFile.length + 1, -".part".length).split("-")[0]
+      );
+      const orphaned =
+        Number.isInteger(pid) && pid > 0 && pid !== process.pid && !pidAlive(pid);
+      if (orphaned) {
+        fs.rmSync(full, { force: true });
+        continue;
+      }
       if (fs.statSync(full).mtimeMs < cutoff) {
         fs.rmSync(full, { force: true });
       }
@@ -207,6 +250,22 @@ function sweepStaleParts(dir: string, modelFile: string): void {
   } catch {
     // Städning är aldrig värd att fälla en hämtning på.
   }
+}
+
+/**
+ * Städar upp efter en krasch UTAN att någon behöver starta en hämtning.
+ *
+ * Den gamla städningen satt bara i downloadModel(), alltså på vägen IN i en ny
+ * hämtning. Den som redan har modellen kommer aldrig dit igen, och blev därför
+ * sittande med halvfilen. Den här körs vid uppstart i stället, oavsett vad
+ * användaren tänker göra.
+ */
+export function sweepAbandonedDownloads(): void {
+  const dest = destinationFor(INSTRUCT_DOWNLOAD);
+  if (!dest) {
+    return;
+  }
+  sweepStaleParts(path.dirname(dest), INSTRUCT_DOWNLOAD.file);
 }
 
 /** Läser filen i bitar. En 2 GB-fil ska inte in i heapen. */
@@ -425,6 +484,10 @@ export async function offerDownload(
 }
 
 export function registerModelDownload(ctx: vscode.ExtensionContext): void {
+  // Städa bort halvfiler från en körning som dog innan den hann rensa själv.
+  // Vid uppstart och inte vid nästa hämtning -- se sweepAbandonedDownloads().
+  sweepAbandonedDownloads();
+
   ctx.subscriptions.push(
     vscode.commands.registerCommand("freya.downloadInstructModel", async () => {
       const ok = await offerDownload(INSTRUCT_DOWNLOAD);

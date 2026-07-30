@@ -111,7 +111,10 @@ suite('Portkollision: anvandaren far ratt orsak', () => {
 	 * instructModel.js med instructServer stubbad, sa vi kan styra vad
 	 * instructConflictingPort() svarar.
 	 */
-	function messageWhenConflict(conflictPort: number | undefined): string {
+	function messageWhenConflict(
+		conflictPort: number | undefined,
+		opts: { turnedOff?: boolean; bundled?: boolean } = {}
+	): string {
 		const modelPath = path.join(OUT, 'instructModel.js');
 		const serverStub = {
 			instructEndpoint: async () => undefined,
@@ -120,6 +123,10 @@ suite('Portkollision: anvandaren far ratt orsak', () => {
 			endInstructCall: () => {},
 			invalidateInstructEndpoint: () => {},
 			instructConflictingPort: () => conflictPort,
+			// Default: lanen ar pa, och bygget hade modellen med sig. Det ar
+			// dev-tradets/D1:s lage, dar det gamla beskedet ar det ratta.
+			instructTurnedOff: () => opts.turnedOff ?? false,
+			instructBundledInBuild: () => opts.bundled ?? true,
 		};
 
 		const origLoad = Module._load;
@@ -159,5 +166,50 @@ suite('Portkollision: anvandaren far ratt orsak', () => {
 	test('utan portkonflikt star det gamla beskedet kvar', () => {
 		const msg = messageWhenConflict(undefined);
 		assert.ok(/not installed/i.test(msg), 'det vanliga beskedet forsvann');
+	});
+
+	// ─────────────────────────────────────────────────────────────────────
+	// SAMMA FELKLASS, TVA YTOR TILL. Uppmatt 2026-07-30 mot en riktig
+	// D2-installation: nar sha256-grinden stoppat en trasig nedladdning
+	// svarade chatten
+	//
+	//   "not installed in this build. It ships with the packaged app; in a
+	//    dev tree, run ... fetchLocalRuntime.ts"
+	//
+	// I D2-bygget ar bada leden fel. Modellen SKA inte ligga i bygget -- den
+	// hamtas -- och fetchLocalRuntime.ts ar ett byggskript som inte finns i
+	// en installation. Anvandaren skickas att leta efter fel sak, precis som
+	// vid portkollisionen ovan.
+	// ─────────────────────────────────────────────────────────────────────
+	test('KRITISKT: D2-bygget sager HAMTA, inte "saknas i bygget"', () => {
+		const msg = messageWhenConflict(undefined, { bundled: false });
+		assert.ok(
+			/download/i.test(msg),
+			'sager inte att modellen ska hamtas'
+		);
+		assert.ok(
+			!/fetchLocalRuntime/.test(msg),
+			'hanvisar till ett byggskript som inte finns i en installation'
+		);
+		assert.ok(
+			!/not installed in this build/i.test(msg),
+			'pastar fortfarande att bygget ar ofullstandigt'
+		);
+		assert.ok(
+			/Download the instruct model/.test(msg),
+			'namner inte kommandot man faktiskt kor'
+		);
+	});
+
+	test('avstangd lane skyller inte pa ett ofullstandigt bygge', () => {
+		const msg = messageWhenConflict(undefined, { turnedOff: true });
+		assert.ok(
+			/freya\.instruct\.enabled/.test(msg),
+			'sager inte vilken installning som star i vagen'
+		);
+		assert.ok(
+			!/not installed/i.test(msg) && !/download/i.test(msg),
+			'ber anvandaren fixa nagot som inte ar problemet'
+		);
 	});
 });

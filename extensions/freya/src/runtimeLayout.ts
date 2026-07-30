@@ -109,6 +109,41 @@ export function findModel(
 }
 
 /**
+ * Buntades modellen MED installern, eller ska den hämtas vid första körningen?
+ *
+ * Skillnaden är inte akademisk -- den avgör vad vi säger till användaren när
+ * modellen saknas. Bygget med FREYA_BUNDLE_INSTRUCT=0 har ingen 3B i
+ * resources/app, och där är "modellen är inte installerad i det här bygget,
+ * kör fetchLocalRuntime.ts" fel i BÅDA leden: den ska inte ligga där, och
+ * fetchLocalRuntime.ts är ett byggskript som inte finns i en installation.
+ *
+ * Testet tittar bara i APPENS egna rötter och med flit inte i downloadRoot:
+ * frågan är vad installern hade med sig, inte vad som råkar finnas på disk.
+ */
+export function bundlesModel(modelSubdir: string): boolean {
+	const appRoot = vscode.env.appRoot;
+	for (const root of [
+		path.join(appRoot, "freya-runtime"),
+		path.join(appRoot, "resources", "freya-runtime"),
+	]) {
+		const modelDir = path.join(root, modelSubdir);
+		try {
+			if (
+				fs.existsSync(modelDir) &&
+				fs
+					.readdirSync(modelDir)
+					.some((f) => f.toLowerCase().endsWith(MODEL_GLOB_SUFFIX))
+			) {
+				return true;
+			}
+		} catch {
+			// En oläsbar mapp är inte en buntad modell.
+		}
+	}
+	return false;
+}
+
+/**
  * Hittar binär + modell för en lane, eller undefined om något saknas.
  *
  * BINÄREN OCH MODELLEN FÅR KOMMA FRÅN OLIKA RÖTTER. Det kravet lättades när

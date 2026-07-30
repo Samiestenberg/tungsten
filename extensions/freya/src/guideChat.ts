@@ -25,17 +25,70 @@ import {
   type InstructTurn,
 } from "./instructModel.js";
 import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from "./guidePrompt.js";
+import { instructMaxInputTokens } from "./instructServer.js";
 
 // Prompten bor i guidePrompt.ts -- delad ordagrant med vscode.lm-providern,
 // och testad mot package.json så guiden inte kan hänvisa till kommandon och
 // inställningar som inte finns. Läs filhuvudet där: formuleringen är mätt
 // fram, inte skriven på känsla.
 
-/** Hur många tidigare turer som följer med. 3B har 8192 tokens totalt. */
+/**
+ * Grovt tak på hur många tidigare turer som ens övervägs.
+ *
+ * Här stod "3B har 8192 tokens totalt". Det var fel, och det är samma falska
+ * premiss som gav maxInputTokens 6000 i languageModel.ts:
+ * Granite-3B-Code-Instruct-2k är tränad på 2048 och llama-server kapar dit.
+ * Sex långa turer plus GUIDE_SYSTEM, GUIDE_SHOTS och svarsutrymmet ryms inte i
+ * 2048 -- och när det inte ryms trimmar servern inte, den svarar HTTP 400.
+ *
+ * Turgränsen är därför bara ett tak. Den riktiga gränsen räknas i
+ * fitWithinBudget() nedan, i tokens.
+ */
 const MAX_HISTORY_TURNS = 6;
 
 /** Tak per svar. Chatten ska vara kort -- se prompten. */
 const MAX_TOKENS = 500;
+
+/**
+ * Samma grova uppskattning som providerns provideTokenCount: ~3,5 tecken per
+ * token. Vi har ingen lokal tokenizer. Den ska vara IDENTISK med providerns --
+ * annars trimmar de två chatt-ytorna olika mycket för samma modell.
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 3.5);
+}
+
+/**
+ * Släpper de äldsta turerna tills historiken plus frågan ryms i budgeten.
+ *
+ * Budgeten kommer från instructMaxInputTokens(), som räknar bakåt från den
+ * kontext servern faktiskt ger -- se instructServer.ts. Guide-prompten och
+ * svarsutrymmet är redan avdragna där, så det som återstår här är vad
+ * historiken och frågan tillsammans får kosta.
+ *
+ * Äldst ryker först, och resultatet börjar alltid på en användartur: en
+ * historik som inleds med ett assistentsvar utan frågan före förvirrar en liten
+ * modell mer än den hjälper.
+ */
+function fitWithinBudget(
+  turns: InstructTurn[],
+  question: string
+): InstructTurn[] {
+  let budget = instructMaxInputTokens() - estimateTokens(question);
+  const kept: InstructTurn[] = [];
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const cost = estimateTokens(turns[i].content);
+    if (cost > budget) {
+      break;
+    }
+    budget -= cost;
+    kept.unshift(turns[i]);
+  }
+  while (kept.length && kept[0].role === "assistant") {
+    kept.shift();
+  }
+  return kept;
+}
 
 /**
  * VS Codes chat-historik till modellens format.
@@ -124,7 +177,10 @@ export function registerGuideChat(ctx: vscode.ExtensionContext): void {
           // FÅ-SKOTTS-EXEMPLEN FÖRST, sedan den riktiga historiken. Se
           // GUIDE_SHOTS i guidePrompt.ts: utan dem ignorerade Granite både
           // formatet och gränsen och erbjöd sig att gå igenom användarens repo.
-          history: [...GUIDE_SHOTS, ...historyFromContext(context)],
+          history: [
+            ...GUIDE_SHOTS,
+            ...fitWithinBudget(historyFromContext(context), prompt),
+          ],
           user: prompt,
           maxTokens: MAX_TOKENS,
           stop: GUIDE_STOP,

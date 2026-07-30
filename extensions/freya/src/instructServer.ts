@@ -24,6 +24,7 @@ import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as path from "path";
 import {
+  bundlesModel,
   derivedApiKey,
   findRuntime,
   portListening,
@@ -86,6 +87,73 @@ export function instructPort(): number {
   // uppmätt: den andra llama-servern binder utan att klaga men får aldrig en
   // anslutning. Hanteringen sitter i start().
   return port === 11434 || port === 11435 ? 11436 : port;
+}
+
+/**
+ * Kontexten llama-server faktiskt ger oss, i tokens.
+ *
+ * `--ctx-size` är ett ÖNSKEMÅL, inte ett löfte: servern kapar till modellens
+ * träningskontext. Uppmätt mot Granite-3B-Code-Instruct-2k med --ctx-size 8192:
+ *
+ *   W llama_context: n_ctx_seq (8192) > n_ctx_train (2048)
+ *   W srv load_model: the slot context (8192) exceeds the training context of
+ *     the model (2048) - capping
+ *   I srv load_model: initializing, n_slots = 4, n_ctx_slot = 2048
+ *
+ * och med --ctx-size 2048, samma modell, samma binär:
+ *
+ *   I srv load_model: initializing, n_slots = 4, n_ctx_slot = 2048
+ *
+ * Alltså identiskt utfall, men utan varningarna. Defaulten är därför 2048 och
+ * inte 8192: talet i inställningen ska vara det man får.
+ */
+export function instructContextSize(): number {
+  const configured = cfg().get<number>("instruct.contextSize");
+  if (!Number.isInteger(configured) || (configured as number) < 512) {
+    return 2048;
+  }
+  return configured as number;
+}
+
+/**
+ * Vad GUIDE_SYSTEM + GUIDE_SHOTS kostar. Uppmätt med providerns egen
+ * uppskattare (tecken/3,5) 2026-07-30: 827 + 458 tecken = 368 tokens. Avrundat
+ * uppåt, för chat-mallen lägger på rollmarkörer per tur ovanpå det.
+ */
+const GUIDE_PROMPT_TOKENS = 400;
+
+/**
+ * Marginal mot att uppskattaren räknar fel. Vi har ingen lokal tokenizer, så
+ * tecken/3,5 är en gissning -- och den gissar LÅGT på kod och på språk med
+ * mycket diakritik. Gissar den lågt tror workbenchen att en prompt ryms, och
+ * servern svarar HTTP 400 i stället för att trimma. Marginalen är priset för
+ * att det aldrig ska hända.
+ */
+const ESTIMATOR_SLACK_TOKENS = 180;
+
+/** Hur många tokens instruct-lanen får GENERERA i ett guide-svar. */
+export const INSTRUCT_MAX_OUTPUT_TOKENS = 600;
+
+/**
+ * Hur stor INDATA guide-ytorna får lova workbenchen.
+ *
+ * Härlett, inte hårdkodat: höjer någon contextSize för att köra en Granite med
+ * större fönster följer talet med. Med den modell vi skickar (2048) blir det
+ * 2048 - 400 - 600 - 180 = 868.
+ *
+ * VARFÖR DET HÄR MÅSTE RÄKNAS OCH INTE GISSAS: maxInputTokens täcker bara
+ * MEDDELANDENA. GUIDE_SYSTEM och GUIDE_SHOTS läggs på efter att workbenchen
+ * trimmat, och genereringen ska också rymmas i samma 2048. Ett tal som bara tar
+ * hänsyn till meddelandena blir därför för stort även när det ser försiktigt ut
+ * -- det var precis så maxInputTokens 6000 kunde stå bredvid en 2048-modell.
+ */
+export function instructMaxInputTokens(): number {
+  const budget =
+    instructContextSize() -
+    GUIDE_PROMPT_TOKENS -
+    INSTRUCT_MAX_OUTPUT_TOKENS -
+    ESTIMATOR_SLACK_TOKENS;
+  return Math.max(256, budget);
 }
 
 function idleUnloadMs(): number {
@@ -372,7 +440,7 @@ class InstructModelServer {
       "-m",
       runtime.model,
       "--ctx-size",
-      String(cfg().get<number>("instruct.contextSize") ?? 8192),
+      String(instructContextSize()),
       "--api-key",
       apiKey,
       // Samma resonemang som i FIM-lanen: inget web-UI, men loggning kvar.
@@ -500,4 +568,23 @@ export function instructInstalled(): boolean {
     return false;
   }
   return !!findRuntime(cfg().get<string>("instruct.runtimePath"), MODEL_SUBDIR);
+}
+
+/**
+ * Har användaren själv stängt av lanen?
+ *
+ * Skilt från instructInstalled() med flit: den svarar false både när modellen
+ * saknas och när inställningen är av, och de två kräver helt olika besked.
+ */
+export function instructTurnedOff(): boolean {
+  return cfg().get<boolean>("instruct.enabled") === false;
+}
+
+/**
+ * Buntades 3B:n med installern (D1), eller hämtas den vid första körningen (D2)?
+ * Avgör vilket besked användaren får när modellen saknas -- se
+ * instructUnavailableMessage() i instructModel.ts.
+ */
+export function instructBundledInBuild(): boolean {
+  return bundlesModel(MODEL_SUBDIR);
 }
