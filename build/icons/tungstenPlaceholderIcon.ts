@@ -3,19 +3,18 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-// Genererar Tungstens PLATSHÅLLARIKON: ett T på krämbakgrund.
+// Generates Tungsten PLACEHOLDER ICON: a T on a cream background.
 //
-// Varför en generator och inte bara binärfiler: ikonen är en platshållare, inte
-// en designad logotyp. Så länge den är genererad går den att göra om, granska
-// och byta ut utan att någon behöver gissa vilka färger eller mått som gällde.
+// Why a generator and not binary files: the icon is a placeholder.
+// As long as it is generated, it can be re-rendered, inspected and replaced.
 //
-// Formen är samma T som extensions/freya/media/freya.svg (samma path, skalad
-// från 24x24), och färgerna kommer ur Tungsten Cream-temat.
+// Shape is the same T as extensions/freya/media/freya.svg (same path, scaled from 24x24),
+// and colors come from the Tungsten Cream theme.
 //
-// Kör:
+// Run:
 //   node --experimental-strip-types build/icons/tungstenPlaceholderIcon.ts
 //
-// Skriver resources/win32/code.ico, code_70x70.png och code_150x150.png.
+// Writes resources/win32/code.ico, code_70x70.png and code_150x150.png.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -23,25 +22,25 @@ import * as zlib from 'zlib';
 
 const ROOT = path.dirname(path.dirname(import.meta.dirname));
 
-// Tungsten Cream: editor.background och accenten som används för ramar/badges.
+// Tungsten Cream: editor.background and the accent used for borders/badges.
 const BG: RGB = [0xf4, 0xee, 0xe2];
 const BORDER: RGB = [0xe0, 0xd3, 0xbc];
 const GLYPH: RGB = [0xc1, 0x5f, 0x3c];
 
 type RGB = [number, number, number];
 
-/** freya.svg: M5 4h14v3.2h-5.4V20h-3.2V7.2H5V4z i en 24x24-ruta. */
+/** freya.svg: M5 4h14v3.2h-5.4V20h-3.2V7.2H5V4z in a 24x24 box. */
 const GLYPH_BOX = 24;
 const CROSSBAR = { x0: 5, y0: 4, x1: 19, y1: 7.2 };
 const STEM = { x0: 10.4, y0: 7.2, x1: 13.6, y1: 20 };
 
-const SS = 4; // supersampling per axel -> 16 sampel/pixel, räcker för kantutjämning
+const SS = 4; // supersampling per axis -> 16 samples/pixel, sufficient for anti-aliasing
 
 function inRect(x: number, y: number, r: { x0: number; y0: number; x1: number; y1: number }): boolean {
 	return x >= r.x0 && x < r.x1 && y >= r.y0 && y < r.y1;
 }
 
-/** Rundade hörn: utanför radien i hörnkvadranten -> transparent. */
+/** Rounded corners: outside radius in corner quadrant -> transparent. */
 function insideRoundedSquare(x: number, y: number, size: number, radius: number): boolean {
 	if (x < 0 || y < 0 || x >= size || y >= size) {
 		return false;
@@ -53,7 +52,7 @@ function insideRoundedSquare(x: number, y: number, size: number, radius: number)
 	return dx * dx + dy * dy <= radius * radius;
 }
 
-/** RGBA-buffert, rad för rad ovanifrån. */
+/** RGBA buffer, row by row from top down. */
 function render(size: number): Buffer {
 	const out = Buffer.alloc(size * size * 4);
 	const radius = Math.max(2, size * 0.18);
@@ -70,15 +69,15 @@ function render(size: number): Buffer {
 					const y = py + (sy + 0.5) / SS;
 
 					if (!insideRoundedSquare(x, y, size, radius)) {
-						continue; // transparent utanför plattan
+						continue; // transparent outside plate
 					}
 
-					// Glyfen ritas i 24x24-koordinater.
+					// Glyph drawn in 24x24 coordinates.
 					const gx = x / scale;
 					const gy = y / scale;
 					const onGlyph = inRect(gx, gy, CROSSBAR) || inRect(gx, gy, STEM);
 
-					// Ramen är plattans yttersta band.
+					// Border is outermost band of plate.
 					const onBorder = !insideRoundedSquare(x, y, size, radius - border)
 						|| x < border || y < border || x >= size - border || y >= size - border;
 
@@ -93,9 +92,9 @@ function render(size: number): Buffer {
 			const samples = SS * SS;
 			const i = (py * size + px) * 4;
 			if (aSum === 0) {
-				continue; // helt transparent
+				continue; // completely transparent
 			}
-			// Färgen viktas mot de täckta samplen så kanten inte blir mörk.
+			// Color weighted by covered samples so edges do not get dark.
 			const covered = aSum / 255;
 			out[i] = Math.round(rSum / covered);
 			out[i + 1] = Math.round(gSum / covered);
@@ -130,11 +129,10 @@ function toPng(rgba: Buffer, size: number): Buffer {
 	const ihdr = Buffer.alloc(13);
 	ihdr.writeUInt32BE(size, 0);
 	ihdr.writeUInt32BE(size, 4);
-	ihdr[8] = 8;  // bitdjup
+	ihdr[8] = 8;  // bit depth
 	ihdr[9] = 6;  // RGBA
-	// resten (komprimering, filter, interlace) är 0
 
-	// Filtertyp 0 per rad.
+	// Filter type 0 per row.
 	const raw = Buffer.alloc(size * (size * 4 + 1));
 	for (let y = 0; y < size; y++) {
 		raw[y * (size * 4 + 1)] = 0;
@@ -150,20 +148,18 @@ function toPng(rgba: Buffer, size: number): Buffer {
 }
 
 /**
- * 32-bitars BMP (DIB) för ICO. Medvetet BMP och inte PNG-i-ICO: BMP-entries
- * fungerar i varje Windows-version och i varje verktyg som läser ikonen,
- * inklusive rcedit när exe-filen får sin ikon.
+ * 32-bit BMP (DIB) for ICO.
  */
 function toIcoBmp(rgba: Buffer, size: number): Buffer {
 	const header = Buffer.alloc(40);
 	header.writeUInt32LE(40, 0);
 	header.writeInt32LE(size, 4);
-	header.writeInt32LE(size * 2, 8); // höjd = bild + AND-mask
+	header.writeInt32LE(size * 2, 8); // height = image + AND-mask
 	header.writeUInt16LE(1, 12);
 	header.writeUInt16LE(32, 14);
 	header.writeUInt32LE(size * size * 4, 20);
 
-	// BGRA, nedifrån och upp.
+	// BGRA, bottom-up.
 	const pixels = Buffer.alloc(size * size * 4);
 	for (let y = 0; y < size; y++) {
 		const src = (size - 1 - y) * size * 4;
@@ -177,7 +173,7 @@ function toIcoBmp(rgba: Buffer, size: number): Buffer {
 		}
 	}
 
-	// AND-masken ignoreras för 32bpp men måste finnas, radpaddad till 4 byte.
+	// AND mask ignored for 32bpp but must exist, padded to 4 bytes.
 	const maskRow = Math.ceil(size / 32) * 4;
 	const mask = Buffer.alloc(maskRow * size);
 
@@ -189,15 +185,15 @@ function toIco(sizes: number[]): Buffer {
 
 	const dir = Buffer.alloc(6 + 16 * sizes.length);
 	dir.writeUInt16LE(0, 0);
-	dir.writeUInt16LE(1, 2); // typ 1 = ikon
+	dir.writeUInt16LE(1, 2); // type 1 = icon
 	dir.writeUInt16LE(sizes.length, 4);
 
 	let offset = dir.length;
 	sizes.forEach((size, i) => {
 		const e = 6 + i * 16;
-		dir[e] = size >= 256 ? 0 : size; // 0 betyder 256
+		dir[e] = size >= 256 ? 0 : size; // 0 means 256
 		dir[e + 1] = size >= 256 ? 0 : size;
-		dir[e + 2] = 0; // färger i paletten
+		dir[e + 2] = 0; // palette colors
 		dir[e + 3] = 0;
 		dir.writeUInt16LE(1, e + 4);
 		dir.writeUInt16LE(32, e + 6);

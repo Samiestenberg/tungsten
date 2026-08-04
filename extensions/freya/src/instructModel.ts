@@ -161,6 +161,7 @@ async function attemptOneShot(opts: InstructOptions): Promise<Attempt> {
       top_p: 1,
       seed: SEED,
       stream: !!opts.onDelta,
+      repeat_penalty: 1.1,
       ...(opts.stop?.length ? { stop: opts.stop } : {}),
       // MEDVETET INGET `tools`-fält. Se filhuvudet. Att lägga till ett vore
       // att återinföra hela felklassen lanen finns för att undvika.

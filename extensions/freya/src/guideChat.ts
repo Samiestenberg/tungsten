@@ -18,14 +18,48 @@
 // EN request som ger EN text tillbaka. Ingen loop, inga verktyg, inget att
 // feltolka.
 import * as vscode from "vscode";
+import * as path from "path";
 import {
   ensureInstructReady,
   instructOneShot,
   instructUnavailableMessage,
+  clampToLines,
   type InstructTurn,
 } from "./instructModel.js";
-import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from "./guidePrompt.js";
+import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM, formatUserPromptWithContext } from "./guidePrompt.js";
 import { instructMaxInputTokens } from "./instructServer.js";
+
+export function buildPromptWithEditorContext(prompt: string): string {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor?.document) {
+    return prompt;
+  }
+  const doc = editor.document;
+  if (doc.uri.scheme !== "file" && doc.uri.scheme !== "untitled") {
+    return prompt;
+  }
+
+  const fileName = path.basename(doc.fileName || "untitled");
+  const languageId = doc.languageId || "plaintext";
+  const sel = editor.selection;
+  let snippet = "";
+  if (sel && !sel.isEmpty) {
+    snippet = doc.getText(sel).trim();
+  } else {
+    snippet = doc.getText().trim();
+  }
+
+  if (!snippet) {
+    return prompt;
+  }
+
+  const clampedSnippet = clampToLines(snippet, 1200).trim();
+  return formatUserPromptWithContext(prompt, {
+    fileName,
+    languageId,
+    snippet: clampedSnippet,
+  });
+}
 
 // Prompten bor i guidePrompt.ts -- delad ordagrant med vscode.lm-providern,
 // och testad mot package.json så guiden inte kan hänvisa till kommandon och
@@ -168,6 +202,8 @@ export function registerGuideChat(ctx: vscode.ExtensionContext): void {
         return {};
       }
 
+      const fullUserPrompt = buildPromptWithEditorContext(prompt);
+
       const ac = new AbortController();
       const sub = token.onCancellationRequested(() => ac.abort());
 
@@ -179,9 +215,9 @@ export function registerGuideChat(ctx: vscode.ExtensionContext): void {
           // formatet och gränsen och erbjöd sig att gå igenom användarens repo.
           history: [
             ...GUIDE_SHOTS,
-            ...fitWithinBudget(historyFromContext(context), prompt),
+            ...fitWithinBudget(historyFromContext(context), fullUserPrompt),
           ],
-          user: prompt,
+          user: fullUserPrompt,
           maxTokens: MAX_TOKENS,
           stop: GUIDE_STOP,
           // TEMPERATUR 0, inte 0,3. Tidigare stod här att lite variation var

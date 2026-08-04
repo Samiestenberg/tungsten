@@ -2818,7 +2818,7 @@ registerWorkbenchContribution2(CodeBlockActionRendering.ID, CodeBlockActionRende
 registerWorkbenchContribution2(ChatCopyActionRendering.ID, ChatCopyActionRendering, WorkbenchPhase.BlockRestore);
 registerWorkbenchContribution2(ChatImplicitContextContribution.ID, ChatImplicitContextContribution, WorkbenchPhase.Eventually);
 registerWorkbenchContribution2(ChatViewsWelcomeHandler.ID, ChatViewsWelcomeHandler, WorkbenchPhase.BlockStartup);
-// Tungsten: Freya kan inte visa detta själv -- den är avstängd i restricted mode.
+// Tungsten: Freya cannot show this itself -- it is disabled in restricted mode.
 registerTungstenRestrictedModeWelcome();
 registerWorkbenchContribution2(ChatGettingStartedContribution.ID, ChatGettingStartedContribution, WorkbenchPhase.Eventually);
 registerWorkbenchContribution2(ChatSetupContribution.ID, ChatSetupContribution, WorkbenchPhase.BlockRestore);

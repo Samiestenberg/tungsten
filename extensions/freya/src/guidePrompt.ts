@@ -242,4 +242,19 @@ export const GUIDE_SHOTS: ReadonlyArray<{ role: "user" | "assistant"; content: s
  * Stoppen klipper där. De hör ihop med exemplen: tar man bort det ena måste
  * man ompröva det andra.
  */
-export const GUIDE_STOP = ["\nQuestion:", "\nSystem:"];
+/**
+ * Formaterar användarfrågan med aktiv filkontext om sådan finns.
+ */
+export function formatUserPromptWithContext(
+  prompt: string,
+  context?: { fileName?: string; languageId?: string; snippet?: string }
+): string {
+  if (!context?.snippet?.trim()) {
+    return prompt;
+  }
+  const fileName = context.fileName || "untitled";
+  const languageId = context.languageId || "plaintext";
+  return `[Active File: ${fileName} (${languageId})]\n\`\`\`${languageId}\n${context.snippet.trim()}\n\`\`\`\n\nQuestion: ${prompt}`;
+}
+
+export const GUIDE_STOP = ["\nQuestion:", "\nSystem:", "\nUser:", "\nAssistant:", "<|im_end|>", "</s>", "<|endoftext|>"];

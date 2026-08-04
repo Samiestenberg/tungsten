@@ -32,6 +32,7 @@ import {
   instructState,
 } from "./instructServer.js";
 import { GUIDE_SHOTS, GUIDE_STOP, GUIDE_SYSTEM } from "./guidePrompt.js";
+import { buildPromptWithEditorContext } from "./guideChat.js";
 
 export const FREYA_VENDOR = "freya";
 
@@ -140,6 +141,7 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
       if (!user) {
         return;
       }
+      const fullUserPrompt = buildPromptWithEditorContext(user);
 
       const ac = new AbortController();
       const sub = token.onCancellationRequested(() => ac.abort());
@@ -150,7 +152,7 @@ export function registerLanguageModel(ctx: vscode.ExtensionContext): void {
           // De två ytorna svarar som SAMMA guide; glider de isär svarar de
           // olika på samma fråga. Se guidePrompt.ts.
           history: [...GUIDE_SHOTS, ...history],
-          user,
+          user: fullUserPrompt,
           // Samma tal som maxOutputTokens ovan. Står de isär lovar vi ett
           // svarsutrymme vi sedan inte ber om -- eller ber om mer än vi räknat
           // in i budgeten, vilket är det som spränger kontexten.
